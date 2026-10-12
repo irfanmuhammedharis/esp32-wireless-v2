@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 150 kHz WPT Controller — Code Explanation &amp; Working Document</title>
+<style>
+:root{
+  --bg:#eef2f7; --card:#ffffff; --ink:#17212b; --muted:#5a6b7d; --border:#d9e2ec;
+  --blue:#0a63c9; --blue-dark:#084a97; --teal:#0a9e86; --amber:#b45309; --red:#b3261e;
+  --code-bg:#101c2c; --code-ink:#dbe9f7; --chip:#e8f1fb;
+}
+html{scroll-behavior:smooth}
+body{margin:0;font:16px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:var(--bg)}
+header.hero{background:linear-gradient(135deg,#0b2f5e 0%,#0a63c9 55%,#0a9e86 100%);color:#fff;padding:2.6rem 1.6rem 2.2rem}
+.hero-inner{max-width:1080px;margin:0 auto}
+h1{font-size:1.9rem;margin:0 0 .35rem;letter-spacing:.2px}
+.subtitle{margin:.2rem 0;opacity:.96;font-size:1.05rem}
+.meta{margin:.65rem 0 0;font-size:.88rem;opacity:.85}
+nav{position:sticky;top:0;background:rgba(255,255,255,.97);border-bottom:1px solid var(--border);z-index:50}
+nav ul{max-width:1080px;margin:0 auto;padding:.55rem 1rem;display:flex;gap:.35rem 1.1rem;flex-wrap:wrap;list-style:none}
+nav a{color:var(--blue-dark);text-decoration:none;font-size:.85rem;font-weight:600}
+nav a:hover{text-decoration:underline}
+main{max-width:1080px;margin:0 auto;padding:1.6rem 1rem 4rem}
+section.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.6rem 1.7rem;margin:0 0 1.4rem;box-shadow:0 1px 3px rgba(16,36,62,.06)}
+h2{font-size:1.35rem;margin:.1rem 0 1rem;color:var(--blue-dark);display:flex;align-items:baseline;gap:.55rem}
+h2 .n{font-size:.85rem;background:var(--chip);color:var(--blue-dark);border-radius:6px;padding:.1rem .45rem;font-weight:700}
+h3{font-size:1.08rem;margin:1.5rem 0 .5rem;color:#0f2d52}
+h4{font-size:.97rem;margin:1.1rem 0 .35rem;color:#243b53}
+p{margin:.55rem 0}
+ul,ol{margin:.5rem 0 .7rem;padding-left:1.35rem}
+li{margin:.2rem 0}
+code{font-family:"Cascadia Code",Consolas,"Courier New",monospace;font-size:.92em;background:#f0f4f9;border:1px solid var(--border);border-radius:5px;padding:0 .3em}
+pre.code{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:1rem 1.15rem;overflow-x:auto;font:13.5px/1.55 "Cascadia Code",Consolas,"Courier New",monospace;margin:.7rem 0}
+pre.code code{background:none;border:none;color:inherit;padding:0;font-size:inherit}
+table.tbl{width:100%;border-collapse:collapse;margin:.8rem 0;font-size:.92rem}
+.tbl th,.tbl td{border:1px solid var(--border);padding:.5rem .65rem;text-align:left;vertical-align:top}
+.tbl th{background:#eef4fb;font-weight:600}
+.tbl tr:nth-child(even) td{background:#fafcfe}
+.formula{background:#f2f7fd;border:1px solid #d4e4f5;border-left:4px solid var(--blue);border-radius:8px;padding:.75rem 1rem;margin:.7rem 0;font-family:Georgia,"Cambria Math",serif;font-size:1.02rem;overflow-x:auto}
+.formula .lbl{display:block;font-family:"Segoe UI",system-ui,sans-serif;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:.25rem}
+.callout{border-radius:10px;padding:.85rem 1rem;margin:.9rem 0;border:1px solid}
+.callout .ct{font-weight:700;display:block;margin-bottom:.15rem;font-size:.82rem;text-transform:uppercase;letter-spacing:.5px}
+.callout.note{background:#eef6ff;border-color:#c8ddf5;color:#123c66}
+.callout.warn{background:#fff7e8;border-color:#f2d9a8;color:#6b4a08}
+.callout.danger{background:#fdeeee;border-color:#f3c8c6;color:#7c1d17}
+.callout.tip{background:#ecfaf5;border-color:#bfe8db;color:#0c5a47}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;margin:.9rem 0}
+.node{background:#fff;border:1.5px solid var(--blue);border-radius:10px;padding:.5rem .72rem;text-align:center;font-size:.85rem;line-height:1.35;min-width:118px}
+.node small{display:block;color:var(--muted);font-size:.75rem}
+.node.power{border-color:var(--teal)}
+.node.sensor{border-color:var(--amber)}
+.node.mcu{border-color:#6b21a8;background:#faf5ff}
+.node.safe{border-color:#0b7a53;background:#f2fbf7}
+.arrow{color:var(--muted);font-size:1.3rem;line-height:1;flex:0 0 auto}
+.timeline{list-style:none;margin:.8rem 0;padding:0 0 0 1.15rem;border-left:3px solid #cfe0f2}
+.timeline li{position:relative;padding:.3rem 0 .55rem .95rem;font-size:.94rem}
+.timeline li::before{content:"";position:absolute;left:-1.76rem;top:.72rem;width:.68rem;height:.68rem;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 2px #cfe0f2}
+.timeline code{font-size:.88em}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0}
+.chip{background:var(--chip);border:1px solid #cfe0f2;border-radius:999px;padding:.15rem .65rem;font-size:.82rem;font-weight:600;color:var(--blue-dark)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.6rem;margin:.9rem 0}
+.kv .item{background:#f7fafd;border:1px solid var(--border);border-radius:10px;padding:.6rem .75rem;font-size:.88rem}
+.kv .item b{display:block;color:var(--blue-dark);font-size:.76rem;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.15rem}
+footer{max-width:1080px;margin:0 auto;padding:0 1rem 3rem;color:var(--muted);font-size:.85rem}
+@media(max-width:820px){.split{grid-template-columns:1fr}}
+@media print{nav{display:none}body{background:#fff}section.card{box-shadow:none}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <h1>ESP32 150&nbsp;kHz WPT Transmitter Controller</h1>
+    <p class="subtitle">Code Explanation &amp; Working Document — firmware in <code style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff">src/main.cpp</code></p>
+    <p class="meta">
+      Hardware revision described: <strong>actual 5&nbsp;V electromechanical relay</strong> (replacing the IRF840-based supply module) switched through Optocoupler&nbsp;1,
+      with a <strong>7805 regulator</strong> deriving the relay operating voltage from the 12&nbsp;V rail &nbsp;·&nbsp;
+      Target board: ESP32 Dev Module (<code style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff">esp32dev</code>) &nbsp;·&nbsp;
+      Document date: 2026-10-12
+    </p>
+  </div>
+</header>
+
+<nav aria-label="Contents">
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#wiring">Wiring &amp; Pins</a></li>
+    <li><a href="#relay">Relay + 7805</a></li>
+    <li><a href="#powerstage">Power Stage</a></li>
+    <li><a href="#firmware">Firmware</a></li>
+    <li><a href="#code">Code Walkthrough</a></li>
+    <li><a href="#calculations">Calculations</a></li>
+    <li><a href="#algorithms">Algorithms</a></li>
+    <li><a href="#commands">Commands</a></li>
+    <li><a href="#safety">Safety</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ================================================================ -->
+<section class="card" id="overview">
+  <h2><span class="n">1</span> Overview</h2>
+
+  <p>
+    This project is the firmware and control electronics for a <strong>wireless power transfer (WPT) transmitter</strong>.
+    An ESP32 generates a <strong>150&nbsp;kHz switching waveform</strong> in hardware (MCPWM) and drives a
+    <strong>half-bridge inverter</strong> through TLP250 gate drivers. The inverter feeds a series capacitor and the
+    transmitter coil; a matching receiver coil picks the power up wirelessly. An <strong>actual electromechanical
+    relay</strong> — controlled by <code>GPIO13</code> through Optocoupler&nbsp;1 — connects and disconnects the
+    12&nbsp;V feed to the power stage. The relay's 5&nbsp;V coil is powered by a <strong>7805 linear regulator</strong>
+    that steps the 12&nbsp;V rail down to 5&nbsp;V.
+  </p>
+
+  <p>
+    The system can run stand-alone: an IR obstacle sensor (GPIO27) detects an object in front of the coil, the firmware
+    moves a servo (GPIO25) to <strong>45°</strong> and starts wireless charging; when the object leaves, the servo
+    returns to <strong>0°</strong> and charging stops. A 16×2 I²C LCD shows status, and a 115200&nbsp;baud serial
+    console accepts commands.
+  </p>
+
+  <div class="callout note">
+    <span class="ct">Hardware revision note</span>
+    Earlier project documentation described a perfboard “supply module” whose IRF840 MOSFET acted as the
+    GPIO13-controlled switch. That arrangement ran hot and behaved like a boost converter. This document describes
+    the <strong>current revision</strong>: a real relay (5&nbsp;V coil, driven via Optocoupler&nbsp;1) gated by
+    <code>GPIO13</code>, with the <strong>7805</strong> making 5&nbsp;V from the 12&nbsp;V rail for the relay coil.
+    The firmware logic is <em>unchanged</em> — <code>GPIO13</code> still means “supply ON/OFF”, so relay active-high
+    semantics match the previous switch semantics.
+  </div>
+
+  <h3>What this document contains</h3>
+  <ul>
+    <li><strong>Code explanation</strong> — a module-by-module walkthrough of <code>src/main.cpp</code>.</li>
+    <li><strong>Calculations</strong> — every numerical decision: MCPWM frequency math, dead time, sequence timing budget, servo PWM, 7805 thermals, and the relay-driver currents.</li>
+    <li><strong>Algorithms</strong> — the controller state machine, run/stop/fault sequences, IR debounce logic, and the cooperative main loop.</li>
+    <li><strong>Working document</strong> — wiring tables and diagrams for the relay + 7805 revision, command reference, and safety/verification status.</li>
+  </ul>
+
+  <div class="kv">
+    <div class="item"><b>MCU</b>ESP32 Dev Module (Arduino core 2.0.17 / ESP-IDF v4.4.7, pinned)</div>
+    <div class="item"><b>Waveform</b>150&nbsp;kHz, 50&nbsp;% duty, complementary with dead time, generated by MCPWM hardware</div>
+    <div class="item"><b>Supply switch</b>5&nbsp;V electromechanical relay, NO contact, driven through Optocoupler 1 from GPIO13</div>
+    <div class="item"><b>Relay supply</b>7805 linear regulator: 12&nbsp;V → 5&nbsp;V, ~71&nbsp;mA coil load</div>
+    <div class="item"><b>User interface</b>16×2 I²C LCD (0x27), IR sensor, servo, serial console @115200</div>
+    <div class="item"><b>Safe state</b>Relay OFF (coil de-energized → contacts open), gate pins LOW, PWM stopped</div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="architecture">
+  <h2><span class="n">2</span> System Architecture</h2>
+
+  <p>The system has two domains that meet at Optocoupler 1: the <strong>ESP32 control side</strong> (3.3&nbsp;V logic)
+  and the <strong>power side</strong> (12&nbsp;V rail, relay coil, half bridge).</p>
+
+  <h3>2.1 Control / signal path</h3>
+  <div class="flow">
+    <div class="node mcu">ESP32<br><small>GPIO13</small></div>
+    <div class="arrow">→</div>
+    <div class="node">Optocoupler 1<br><small>PC817-class</small></div>
+    <div class="arrow">→</div>
+    <div class="node">NPN driver<br><small>2N2222-class</small></div>
+    <div class="arrow">→</div>
+    <div class="node power">Relay K1 coil<br><small>5 V DC from 7805</small></div>
+    <div class="arrow">→</div>
+    <div class="node safe">Relay contacts<br><small>COM–NO</small></div>
+  </div>
+
+  <div class="flow">
+    <div class="node sensor">IR sensor<br><small>GPIO27, LOW = object</small></div>
+    <div class="arrow">→</div>
+    <div class="node mcu">ESP32 firmware<br><small>state machine</small></div>
+    <div class="arrow">→</div>
+    <div class="node">Servo<br><small>GPIO25, 0°/45°</small></div>
+    <div class="arrow">→</div>
+    <div class="node">LCD<br><small>GPIO21/22 (I²C)</small></div>
+  </div>
+
+  <div class="flow">
+    <div class="node mcu">ESP32 MCPWM<br><small>GPIO14 → 150 kHz A</small></div>
+    <div class="arrow">→</div>
+    <div class="node">TLP250 #1<br><small>high side, Q1</small></div>
+    <div class="arrow">→</div>
+    <div class="node power">Half bridge<br><small>Q1 / Q2</small></div>
+    <div class="arrow">←</div>
+    <div class="node mcu">ESP32 MCPWM<br><small>GPIO26 → 150 kHz B</small></div>
+  </div>
+
+  <h3>2.2 Power path</h3>
+  <div class="flow">
+    <div class="node power">12 V PSU<br><small>always-on rail</small></div>
+    <div class="arrow">→</div>
+    <div class="node">7805<br><small>12 V → 5 V</small></div>
+    <div class="arrow">→</div>
+    <div class="node">5 V rail<br><small>relay coil + driver</small></div>
+  </div>
+  <div class="flow">
+    <div class="node power">12 V PSU</div>
+    <div class="arrow">→</div>
+    <div class="node">Relay contacts<br><small>COM → NO</small></div>
+    <div class="arrow">→</div>
+    <div class="node">+V bus<br><small>half-bridge rail</small></div>
+    <div class="arrow">→</div>
+    <div class="node">Half bridge<br><small>Q1/Q2 @150 kHz</small></div>
+    <div class="arrow">→</div>
+    <div class="node">Series C<br><small>~14 nF film</small></div>
+    <div class="arrow">→</div>
+    <div class="node power">TX coil<br><small>~79 µH</small></div>
+  </div>
+
+  <p>
+    Because the relay contacts are in series with the +V bus, an <strong>open relay galvanically separates the power
+    stage from the 12&nbsp;V supply</strong>. The 7805 taps the 12&nbsp;V rail <em>before</em> the relay contact, so the
+    relay coil circuit is always powered — the firmware can always close the relay when commanded.
+  </p>
+
+  <div class="callout tip">
+    <span class="ct">Design intent</span>
+    The relay is not a 150&nbsp;kHz device. It is a slow, low-loss <em>supply gate</em> (milliseconds). All fast
+    switching happens in the MOSFET half bridge, which is gated by the MCPWM hardware at 150&nbsp;kHz. The firmware
+    keeps these two timescales strictly ordered (see the sequence timelines in <a href="#algorithms">Algorithms</a>).
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="wiring">
+  <h2><span class="n">3</span> Wiring &amp; Pin Map</h2>
+
+  <h3>3.1 ESP32 pin map (matches the firmware constants)</h3>
+  <table class="tbl">
+    <thead>
+      <tr><th>GPIO</th><th>Direction</th><th>Connects to</th><th>Firmware role</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>13</td><td>Output</td>
+        <td>Optocoupler 1 → relay driver → relay coil</td>
+        <td>Relay ON/OFF only (default <strong>OFF</strong>). HIGH = coil energized = contacts closed. Not a 150 kHz signal.</td>
+      </tr>
+      <tr>
+        <td>14</td><td>MCPWM0A output</td>
+        <td>TLP250 #1 → Q1 gate (high side)</td>
+        <td>150 kHz square wave, complementary to GPIO26 with dead time.</td>
+      </tr>
+      <tr>
+        <td>26</td><td>MCPWM0B output</td>
+        <td>TLP250 #2 → Q2 gate (low side)</td>
+        <td>Inverse of GPIO14 with non-overlap (dead time).</td>
+      </tr>
+      <tr>
+        <td>21 / 22</td><td>I²C SDA / SCL</td>
+        <td>16×2 LCD backpack (address 0x27)</td>
+        <td>Status display, refresh every 500 ms. Never gates control.</td>
+      </tr>
+      <tr>
+        <td>27</td><td>Input (pull-up)</td>
+        <td>IR obstacle sensor OUT (power module from 3.3 V)</td>
+        <td>LOW = object detected → servo 45° + run; HIGH = clear → servo 0° + stop.</td>
+      </tr>
+      <tr>
+        <td>25</td><td>LEDC output</td>
+        <td>Servo signal pin</td>
+        <td>50 Hz servo PWM, 500–2500 µs = 0–180°. Idle 0°, transfer 45°.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="ct">Boot-time caution</span>
+    GPIO13 and GPIO14 are JTAG pins and are <strong>not under firmware control during reset/boot</strong>. Fit
+    external ~10 kΩ pull-downs on GPIO13, GPIO14 and GPIO26 so the relay stays de-energized and both gates stay LOW
+    through every boot and reset.
+  </div>
+
+  <h3>3.2 Relay + 7805 connection list (working reference)</h3>
+  <ol>
+    <li><strong>12 V feed:</strong> PSU <code>+</code> → fuse → relay <code>COM</code>; relay <code>NO</code> → +V bus of the half bridge (Q1 drain / bus capacitor bank).</li>
+    <li><strong>7805 input:</strong> PSU <code>+</code> (before the relay) → 7805 <code>IN</code>. 0.33 µF from <code>IN</code> to GND.</li>
+    <li><strong>7805 output:</strong> 7805 <code>OUT</code> → 5 V rail. 0.1 µF (plus a small electrolytic if desired) from <code>OUT</code> to GND. Mount on a heatsink if it runs warm (see thermal math).</li>
+    <li><strong>Opto LED side:</strong> GPIO13 → 220 Ω → PC817 anode (pin 1); PC817 cathode (pin 2) → GND.</li>
+    <li><strong>Opto output side:</strong> 5 V → PC817 collector (pin 4); PC817 emitter (pin 3) → 2N2222 base; 10 kΩ from base to GND (holds the transistor off, speeds turn-off).</li>
+    <li><strong>Coil driver:</strong> 2N2222 emitter → GND; 2N2222 collector → relay coil (−). Coil (+) → 5 V rail.</li>
+    <li><strong>Flyback diode:</strong> 1N4007 across the coil, cathode to +5 V, anode to the collector. Mandatory — the coil's inductive kick can destroy the driver and the optocoupler.</li>
+    <li><strong>Grounds:</strong> ESP32 GND, opto/driver GND, 7805 GND, relay-driver GND and PSU <code>−</code> are common. (With a shared ground the opto provides level shifting and pins protection, not full galvanic isolation.)</li>
+  </ol>
+
+  <div class="callout note">
+    <span class="ct">Using a ready-made relay module instead</span>
+    If you use an opto-isolated relay module with an <code>IN</code> pin, drive <code>IN</code> from GPIO13 and keep
+    an active-high trigger so the firmware semantics (<code>GPIO13 HIGH = relay energized</code>) stay correct.
+    The discrete PC817 + 2N2222 circuit above is the reference implementation whose numbers are computed in
+    <a href="#calculations">§8</a>.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="relay">
+  <h2><span class="n">4</span> The Supply Switch: Relay + 7805</h2>
+
+  <h3>4.1 Why an actual relay replaced the IRF840 “supply module”</h3>
+  <table class="tbl">
+    <thead><tr><th></th><th>IRF840 module (old)</th><th>Relay K1 (current)</th></tr></thead>
+    <tbody>
+      <tr><td>On-state loss</td><td>R<sub>DS(on)</sub> 0.85–1.5 Ω → at 2 A: 1.7–3 V drop, 3.4–6 W heat</td><td>Contact ~50 mΩ → at 2 A: ~0.1 V drop, ~0.2 W</td></tr>
+      <tr><td>Isolation when off</td><td>Diode drop only (perfboard layout behaved like a boost converter — ran hot)</td><td>True open contact, full galvanic separation of the bus</td></tr>
+      <tr><td>Speed</td><td>µs-scale (but unusable: overheat, wiring error risk)</td><td>5–10 ms operate/release — fine for on/off supply gating</td></tr>
+      <tr><td>Protection role</td><td>None</td><td>None — relay shutdown is <em>not</em> fast protection</td></tr>
+      <tr><td>Drive</td><td>12 V gate from 12 V rail</td><td>5 V coil from 7805; ~71 mA</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.2 How the relay is driven (active-high chain)</h3>
+  <p>
+    <code>GPIO13 HIGH</code> → current flows through the opto LED → phototransistor conducts → base current into the
+    2N2222 → transistor saturates → the 5 V coil energizes → contacts close → 12 V reaches the +V bus.
+    <code>GPIO13 LOW</code> removes all of it: coil de-energizes, contacts open, bus isolated.
+    The firmware's safe state (relay OFF at boot, <code>FaultLocked</code>, and <code>stop</code>) therefore means
+    “coil unpowered”, which is also the fail-safe state if the ESP32 resets (with external pull-downs fitted).
+  </p>
+
+  <h3>4.3 Why a 7805 from the 12 V rail</h3>
+  <ul>
+    <li>The relay has a <strong>5 V coil</strong> (the most common, cheapest class), and the 12 V rail is already present — a 7805 gives the 5 V with two capacitors and no magnetics.</li>
+    <li>The load is small (~71 mA), so the linear regulator's loss (~0.5 W) is acceptable; a switching module would add EMI next to a 150 kHz power stage for no real benefit.</li>
+    <li>The 7805 also feeds the opto/driver stage, keeping all relay-side electronics on one regulated rail.</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="ct">Do not power the servo from this 7805</span>
+    The servo's stall current (~650 mA) would push the 7805 dissipation to (12−5)&nbsp;×&nbsp;0.65 ≈ 4.6 W — far beyond
+    what a TO-220 7805 can shed without a large heatsink. Keep the servo on its own 5 V supply as set out in the
+    project notes.
+  </div>
+
+  <h3>4.4 Relay timing vs the firmware's waits</h3>
+  <table class="tbl">
+    <thead><tr><th>Event</th><th>Typical relay behaviour (5 V class, check your datasheet)</th><th>Firmware wait</th><th>Margin</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>PWM starts → relay energized</td>
+        <td>—</td>
+        <td><code>kPwmPrechargeMs</code> = 20 ms</td>
+        <td>≈ 3000 switching periods at 150 kHz — waveform and dead time fully settled before bus voltage appears</td>
+      </tr>
+      <tr>
+        <td>Coil energized → contacts closed (“operate time”)</td>
+        <td>typ. 5–10 ms, plus 1–3 ms contact bounce</td>
+        <td><code>kRelaySettleMs</code> = 50 ms</td>
+        <td>≥ 4× the datasheet operate time covers bounce and worst case</td>
+      </tr>
+      <tr>
+        <td>Coil de-energized → contacts open (“release time”)</td>
+        <td>typ. 5 ms (≤ 10 ms)</td>
+        <td><code>kRelayDropoutMs</code> = 80 ms</td>
+        <td>≥ 8× release time; bus confirmed dead before gate drive is removed</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout danger">
+    <span class="ct">Protection limits</span>
+    An electromechanical relay takes milliseconds to open. It <strong>cannot protect the MOSFETs</strong> from
+    overcurrent. Full-power operation still requires a fuse and a fast overcurrent shutdown (e.g., the MCPWM fault
+    input with a one-shot trip). Never rely on GPIO13 as a protection device.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="powerstage">
+  <h2><span class="n">5</span> Power Stage Context (what the relay feeds)</h2>
+
+  <p>
+    The relay's NO contact delivers 12 V to a <strong>half-bridge inverter</strong>. Q1 (high side) has its drain on
+    +V bus; the switch node between Q1 source and Q2 drain feeds a <strong>series capacitor</strong> and the
+    transmitter coil. Each MOSFET has its own TLP250 gate driver, driven from GPIO14 (pair A) and GPIO26 (pair B).
+  </p>
+
+  <h3>5.1 Switching sequence (per period)</h3>
+  <table class="tbl">
+    <thead><tr><th>Interval</th><th>GPIO14 → Q1</th><th>GPIO26 → Q2</th><th>Switch node</th></tr></thead>
+    <tbody>
+      <tr><td>Half-cycle 1</td><td>ON</td><td>OFF</td><td>+V bus</td></tr>
+      <tr><td>Dead time</td><td>OFF</td><td>OFF</td><td>Coil current freewheels through body diodes</td></tr>
+      <tr><td>Half-cycle 2</td><td>OFF</td><td>ON</td><td>GND</td></tr>
+      <tr><td>Dead time</td><td>OFF</td><td>OFF</td><td>Body diodes again</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.2 Key power-stage numbers (from the design notes — treat as unverified until measured)</h3>
+  <div class="formula">
+    <span class="lbl">Fundamental of a 50 % half bridge</span>
+    V<sub>fund,rms</sub> = 0.45 × V<sub>bus</sub> &nbsp;→&nbsp; 0.45 × 12 V ≈ <strong>5.4 V rms</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Series resonance capacitor (with L ≈ 79 µH at 150 kHz)</span>
+    C = 1 / ((2πf)² · L) = 1 / ((2π × 150 kHz)² × 79 µH) ≈ <strong>14.2 nF</strong> (polypropylene film, ≥ 630 V DC)
+  </div>
+  <div class="callout danger">
+    <span class="ct">Resonance hazard</span>
+    At resonance with <em>no receiver</em> present, the design notes compute ~5.1 A rms in the loop and ~380 V rms
+    across the capacitor. Commission at 2–3 V bus, current-limited, with the receiver present, and run slightly
+    <em>above</em> resonance.
+  </div>
+  <p>
+    The firmware side of the power stage is the MCPWM configuration explained in
+    <a href="#code">§7</a> and its mathematics in <a href="#calculations">§8</a>. The relay revision does not
+    change any of this — it only changes how the 12 V feed is gated.
+  </p>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="firmware">
+  <h2><span class="n">6</span> Firmware Overview</h2>
+
+  <div class="kv">
+    <div class="item"><b>Entry point</b><code>src/main.cpp</code> — single translation unit, all logic in one anonymous namespace</div>
+    <div class="item"><b>Framework</b>Arduino on ESP32, with ESP-IDF v4.4.7 driver APIs (<code>driver/mcpwm.h</code>, <code>driver/gpio.h</code>)</div>
+    <div class="item"><b>Platform</b>PlatformIO, <code>espressif32 @ 7.0.0</code>, board <code>esp32dev</code>, pinned for the legacy MCPWM API</div>
+    <div class="item"><b>Build flags</b><code>-Wall -Wextra -Werror</code> — all compiler warnings are errors</div>
+    <div class="item"><b>Library</b><code>LiquidCrystal_I2C @ 1.1.4</code> for the status LCD</div>
+    <div class="item"><b>Serial</b>115200 baud console: <code>stop</code>, <code>freq</code>, <code>status</code>, <code>help</code> (no manual turn-on; IR only)</div>
+  </div>
+
+  <h3>6.1 What the firmware is responsible for</h3>
+  <ol>
+    <li><strong>Generating the 150 kHz waveform</strong> in MCPWM hardware — never with <code>digitalWrite()</code> or software timing.</li>
+    <li><strong>Enforcing safe ordering</strong> at start/stop/fault: GPIO13 relay, gate pins, dead time, and the MCPWM timer are always sequenced in a fixed, safe order.</li>
+    <li><strong>Running the controller state machine</strong> that owns the relay and PWM states (7 states, single owner, no scattered flags).</li>
+    <li><strong>Automatic operation</strong> from the IR sensor: object → servo 45° + charge; object leaves → servo 0° + stop.</li>
+    <li><strong>Operator feedback</strong>: serial status/commands and the 16×2 LCD; safety-relevant state is always visible.</li>
+  </ol>
+
+  <h3>6.2 Execution model</h3>
+  <p>
+    Cooperative, non-blocking: the Arduino <code>loop()</code> runs five tasks in sequence, each cheap enough to
+    return quickly (worst case is the ~40 ms LCD I²C refresh every 500 ms). The 150 kHz waveform is fully
+    autonomous in hardware, so loop latency never disturbs it.
+  </p>
+
+<pre class="code"><code>void loop() {
+  serviceSerial();       // parse console commands
+  serviceIrControl();    // IR debounce + auto run/stop + servo
+  serviceStateMachine(); // timed transitions (relay/PWM sequencing)
+  updateLcd();           // throttled status display
+  delay(1);              // yield
+}</code></pre>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="code">
+  <h2><span class="n">7</span> Code Walkthrough — <code>src/main.cpp</code></h2>
+
+  <h3>7.1 Pin map and hardware constants</h3>
+<pre class="code"><code>// Pin map from the requested wiring.
+constexpr gpio_num_t kRelayPin = GPIO_NUM_13;   // Optocoupler 1: relay only
+constexpr gpio_num_t kSwitchPinA = GPIO_NUM_14; // TLP250 2 and 3: diagonal pair A
+constexpr gpio_num_t kSwitchPinB = GPIO_NUM_26; // TLP250 4 and 5: diagonal pair B</code></pre>
+  <p>
+    Three output pins matter to the power path: <code>kRelayPin</code> (the electromechanical relay through
+    Optocoupler 1), and the two gate-command pins routed to MCPWM0A/MCPWM0B. (The “diagonal pair” wording in the
+    comments dates from an earlier full-bridge draft; in the current half-bridge the firmware treats A as the high
+    side and B as the low side — the firmware only cares that A and B are complementary and drive <em>opposite</em>
+    switches.) All other pins: IR sensor, servo, LCD I²C.
+  </p>
+
+  <h3>7.2 MCPWM clocking — why 80 MHz</h3>
+  <p>
+    The waveform frequency resolution comes from the clock fed to the MCPWM timer. The legacy driver defaults to a
+    10 MHz group / 1 MHz timer clock, which would make a 150 kHz request become just 6 timer ticks — rounding to
+    166.7 kHz. The firmware instead runs both group and timer at 80 MHz, giving 533 ticks per 150 kHz period
+    (see <a href="#calculations">§8.1</a> for the arithmetic).
+  </p>
+<pre class="code"><code>// MCPWM clocking (ESP-IDF v4.4.7 legacy driver, Arduino-ESP32 2.0.17).
+// The driver default is group 10 MHz / timer 1 MHz, which turns a 150 kHz
+// request into peak = 1 MHz / 150 kHz = 6 ticks -&gt; 166.7 kHz. Run both at
+// 80 MHz instead: peak = 533 ticks -&gt; 150.09 kHz with ~0.28 kHz tuning steps.
+constexpr uint32_t kMcpwmBaseClockHz = 160000000UL; // SOC_MCPWM_BASE_CLK_HZ
+constexpr uint32_t kMcpwmGroupResolutionHz = 80000000UL;
+constexpr uint32_t kMcpwmTimerResolutionHz = 80000000UL;
+static_assert(kMcpwmBaseClockHz % kMcpwmGroupResolutionHz == 0,
+              "Group resolution must divide the 160 MHz MCPWM base clock");
+static_assert(kMcpwmGroupResolutionHz % kMcpwmTimerResolutionHz == 0,
+              "Timer resolution must divide the group resolution");</code></pre>
+  <ul>
+    <li><code>static_assert</code>s make an invalid clock tree a <em>compile error</em>, not a run-time surprise.</li>
+    <li>Frequency bounds: <code>kMinSwitchingFrequencyHz</code> = 100 kHz, <code>kMaxSwitchingFrequencyHz</code> = 200 kHz; default 150 kHz, 50 % duty on both outputs.</li>
+    <li>A <code>static_assert</code> also proves the 16-bit period register can reach 100 kHz (<code>80 MHz / 100 kHz = 800 &lt; 65536</code>).</li>
+  </ul>
+
+  <h3>7.3 Dead time — the most safety-critical constant</h3>
+  <p>
+    Q1 and Q2 must <strong>never conduct at the same time</strong> (that would short the 12 V bus). Dead time inserts
+    a guaranteed both-OFF gap at every transition. It is expressed in MCPWM <em>group clock</em> ticks
+    (12.5 ns at 80 MHz), taken from worst-case TLP250 propagation delay (0.5 µs max) plus IRF840 turn-off:
+  </p>
+<pre class="code"><code>constexpr uint32_t kDeadTimeNs = 700UL;
+constexpr uint32_t kDeadTimeTicks = static_cast&lt;uint32_t&gt;(
+    (static_cast&lt;uint64_t&gt;(kDeadTimeNs) * kMcpwmGroupResolutionHz +
+     999999999ULL) /
+    1000000000ULL);
+static_assert(kDeadTimeTicks &gt;= 1 &amp;&amp; kDeadTimeTicks &lt; 65535UL,
+              "Dead-time register is 16 bits");
+static_assert(kDeadTimeNs * 4UL &lt; 1000000000UL / kMaxSwitchingFrequencyHz,
+              "Dead time must stay well below half of the shortest period");</code></pre>
+  <p>
+    700 ns → 56 ticks (hardware delay likely 57 ticks ≈ 712.5 ns, per the driver source). At 150 kHz each half
+    period is 3.33 µs, so each MOSFET still conducts ~2.62 µs per half cycle — see <a href="#calculations">§8.2</a>.
+    The second <code>static_assert</code> guarantees the dead time stays far below half of the shortest period even
+    at the 200 kHz maximum frequency.
+  </p>
+
+  <h3>7.4 Relay and sequence timing constants</h3>
+<pre class="code"><code>// Relays move in milliseconds, while the inverter switches in microseconds.
+// These are conservative defaults for bench bring-up; use the relay datasheet.
+constexpr uint32_t kPwmPrechargeMs = 20UL;
+constexpr uint32_t kRelaySettleMs = 50UL;
+constexpr uint32_t kRelayDropoutMs = 80UL;</code></pre>
+  <p>
+    These three numbers order the two timescales: start the waveform <em>before</em> applying bus voltage
+    (20 ms), wait out the relay's mechanical closure and contact bounce (50 ms), and after commanding the relay OFF
+    wait out release time before removing gate drive (80 ms). The budget vs the relay datasheet is tabulated in
+    <a href="#relay">§4.4</a>.
+  </p>
+
+  <h3>7.5 Safe GPIO configuration at boot</h3>
+  <p>
+    Boot must not glitch the relay or the gates. The pins are pre-latched LOW <em>before</em> the output drivers are
+    enabled, configured with internal pull-downs, and set to <code>GPIO_MODE_INPUT_OUTPUT</code> so the firmware can
+    read back the real pad level of the relay pin (an output-only pad reads 0 and would misreport the relay state).
+  </p>
+<pre class="code"><code>void configureSafeGpio() {
+  // Latch LOW in the output register before enabling the output drivers.
+  gpio_set_level(kRelayPin, 0);
+  gpio_set_level(kSwitchPinA, 0);
+  gpio_set_level(kSwitchPinB, 0);
+
+  // INPUT_OUTPUT so gpio_get_level() reads back the real pad level for the
+  // relay status; with output-only mode the input path is off and reads 0.
+  const gpio_config_t output_config = {
+      .pin_bit_mask = (1ULL &lt;&lt; kRelayPin) | (1ULL &lt;&lt; kSwitchPinA) |
+                      (1ULL &lt;&lt; kSwitchPinB),
+      .mode = GPIO_MODE_INPUT_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_ENABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+
+  gpio_config(&amp;output_config);
+}</code></pre>
+  <p>
+    Note that <code>GPIO13 LOW</code> = opto LED OFF = 2N2222 OFF = <strong>relay coil de-energized</strong> =
+    contacts open = bus isolated. This active-high chain is what makes the safe state truly safe. The separate
+    gate-drive polarity is guarded by a compile-time check:
+  </p>
+<pre class="code"><code>static_assert(kGateCommandActiveHigh,
+              "Safe state forces switch pins LOW; inverted gate drive needs a "
+              "redesigned safe state before this can be changed");</code></pre>
+
+  <h3>7.6 Starting and stopping the waveform — ordering that prevents shoot-through</h3>
+  <p>
+    <code>mcpwm_init()</code> starts the timer with the dead-time module still in <em>bypass</em> — at that moment
+    outputs A and B would be identical, i.e. both half-bridge switches ON (a bus short). The firmware therefore
+    configures everything with the pins as plain GPIO LOW, enables dead time, waits for it to latch, and only then
+    routes the pins to the MCPWM peripheral:
+  </p>
+<pre class="code"><code>  // Configure MCPWM completely while the pins are still plain GPIO LOW.
+  // mcpwm_init() starts the timer itself, and the dead-time module resets to
+  // bypass, so A and B are briefly identical (both HIGH = both diagonal pairs
+  // ON). Routing the pins only after dead time is active avoids that window.
+  if (!checkEsp(mcpwm_init(kMcpwmUnit, kMcpwmTimer, &amp;pwm_config),
+                "mcpwm_init")) {
+    return false;
+  }
+  g_switchingActive = true; // timer is running internally from here on
+
+  if (!checkEsp(mcpwm_deadtime_enable(kMcpwmUnit, kMcpwmTimer,
+                                      MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE,
+                                      kDeadTimeTicks, kDeadTimeTicks),
+                "mcpwm_deadtime_enable")) {
+    return false;
+  }
+
+  delayMicroseconds(kMcpwmSettleUs);   // 50 us: dead-time delays latch at a timer zero
+
+  if (!checkEsp(mcpwm_gpio_init(kMcpwmUnit, MCPWM0A, kSwitchPinA),
+                "mcpwm_gpio_init A")) {
+    return false;
+  }
+  if (!checkEsp(mcpwm_gpio_init(kMcpwmUnit, MCPWM0B, kSwitchPinB),
+                "mcpwm_gpio_init B")) {
+    return false;
+  }</code></pre>
+  <p>
+    Shutdown does the reverse and is equally strict: <strong>detach the pins and force them LOW first</strong>
+    (via <code>forceSwitchPinsLowAsGpio()</code>, a straight GPIO reconfiguration that cannot be blocked by MCPWM
+    state — the gate-kill path), <em>then</em> stop the timer and disable dead time. The relay itself is switched
+    before that, with waits, per the timelines in <a href="#algorithms">§9</a>.
+  </p>
+
+  <h3>7.7 Fault latch — fail safe, then stay safe</h3>
+  <p>
+    Every MCPWM API return code is checked by <code>checkEsp()</code>. Any failure calls <code>latchFault()</code>,
+    which removes the relay and the gate drive <em>immediately</em> — it does not wait for relay dropout, because
+    when something is wrong, killing gate drive takes priority:
+  </p>
+<pre class="code"><code>// Latches until reset. Relay OFF and gates OFF immediately, without waiting
+// for relay dropout: on a fault, removing gate drive takes priority.
+void latchFault(const char *reason) {
+  relayOff();
+  forceSwitchPinsLowAsGpio();
+  if (g_switchingActive) {
+    mcpwm_stop(kMcpwmUnit, kMcpwmTimer);
+    g_switchingActive = false;
+  }
+  g_faultReason = reason;
+  enterState(ControllerState::FaultLocked);
+  Serial.printf("FAULT LATCHED: %s. Outputs safe; reset required.\n", reason);
+}</code></pre>
+  <p>
+    <code>FaultLocked</code> is sticky: nothing but a reset clears it. The LCD shows
+    <code>FAULT - RESET</code> plus the reason, and <code>status</code> reports it on the console.
+  </p>
+
+  <h3>7.8 The controller state machine</h3>
+<pre class="code"><code>enum class ControllerState : uint8_t {
+  Idle,               // outputs safely off
+  StartingPwm,        // waveform live, waiting 20 ms before relay ON
+  WaitingRelaySettle, // relay ON, waiting 50 ms for contact settling
+  Running,            // powered transfer
+  StoppingRelayDropout,// relay OFF, waiting 80 ms before killing gate drive
+  FaultLocked         // sticky fault, outputs safe, reset required
+};</code></pre>
+  <p>
+    The timed transitions live in <code>serviceStateMachine()</code>, which compares
+    <code>millis() - g_stateEnteredMs</code> against the constants each loop pass:
+  </p>
+<pre class="code"><code>  switch (g_state) {
+  case ControllerState::StartingPwm:
+    if (elapsed &gt;= kPwmPrechargeMs) {
+      relayOn();
+      enterState(ControllerState::WaitingRelaySettle);
+      Serial.println("Relay energized; waiting for contact settling.");
+    }
+    break;
+
+  case ControllerState::WaitingRelaySettle:
+    if (elapsed &gt;= kRelaySettleMs) {
+      enterState(ControllerState::Running);
+      Serial.println("RUNNING.");
+    }
+    break;
+
+  case ControllerState::StoppingRelayDropout:
+    if (elapsed &gt;= kRelayDropoutMs) {
+      stopSwitchingOutputs();
+      if (!isFaulted()) {
+        enterState(ControllerState::Idle);
+        Serial.println("Stopped: relay OFF, PWM OFF, switch pins LOW.");
+      }
+    }
+    break;</code></pre>
+  <p>
+    No delays block the loop — each state simply notes when it was entered and acts when its time has elapsed.
+  </p>
+
+  <h3>7.9 Serial console</h3>
+  <p>
+    <code>serviceSerial()</code> accumulates characters until a line ending; lines are trimmed, lower-cased and
+    dispatched. The buffer is capped at 48 characters — longer input is discarded with a message rather than
+    overflowing. Harmless commands (<code>status</code>, <code>help</code>, <code>stop</code>) work in any state;
+    <code>freq</code> is refused unless the controller is <code>Idle</code>. There is no manual turn-on command:
+    the IR sensor is the only way to start (the IR-triggered run also uses <code>requireIdle</code>):
+  </p>
+<pre class="code"><code>bool requireIdle(const char *command) {
+  if (g_state == ControllerState::Idle) {
+    return true;
+  }
+  Serial.printf("Refusing %s: controller is not Idle. Send 'stop' first.\n",
+                command);
+  return false;
+}</code></pre>
+  <ul>
+    <li>The IR-triggered run additionally requires the two compile-time arm flags
+      (<code>kPowerStageTopologyVerified</code> and <code>kAllowRelayEnergizedRun</code>, both currently true —
+      armed 2026-10-11 at the user's request; <strong>not scope-verified</strong>).</li>
+    <li><code>freq &lt;hz&gt;</code> only changes the <em>requested</em> frequency while Idle, because the legacy
+      driver applies a new period immediately — changing it mid-run could stretch a switching cycle. The console
+      reports both the requested and the <em>actual</em> frequency:</li>
+  </ul>
+<pre class="code"><code>uint32_t actualFrequencyHz(const uint32_t requested_hz) {
+  // Mirrors mcpwm_init(): peak = timer_clk / frequency (integer division).
+  return kMcpwmTimerResolutionHz / (kMcpwmTimerResolutionHz / requested_hz);
+}</code></pre>
+
+  <h3>7.10 IR sensor, servo and automatic operation</h3>
+  <p>
+    The IR module (FC-51 class, powered from 3.3 V) pulls GPIO27 LOW when an object is detected. The firmware
+    debounces the raw signal (100 ms), waits 2 s after boot before acting, and executes exactly once per stable
+    change:
+  </p>
+<pre class="code"><code>  if (now &gt;= kIrStartDelayMs &amp;&amp; now - raw_since_ms &gt;= kIrDebounceMs &amp;&amp;
+      (!have_state || raw != g_irDetecting)) {
+    have_state = true;
+    g_irDetecting = raw;
+    if (g_irDetecting) {
+      Serial.println("IR on: servo 45 deg, transfer ON.");
+      setServoAngle(kServoTransferAngleDeg);
+      run_pending = true;
+    } else {
+      Serial.println("IR off: servo 0 deg, transfer OFF.");
+      setServoAngle(kServoIdleAngleDeg);
+      run_pending = false;
+      stopController();
+    }
+  }</code></pre>
+  <p>
+    On detection the servo moves to 45° and a <code>run_pending</code> flag requests the powered start. The flag is
+    re-tried each loop until the state machine reaches <code>Idle</code> — this handles the case “object returns
+    while the previous stop sequence is still waiting for relay dropout” without ever violating
+    <code>requireIdle()</code>:
+  </p>
+<pre class="code"><code>  // run only starts from Idle, e.g. after a quick IR off -&gt; on while the
+  // stop sequence is still waiting for relay dropout.
+  if (run_pending &amp;&amp; g_state == ControllerState::Idle) {
+    run_pending = false;
+    requestPoweredRun();
+  }</code></pre>
+  <p>
+    A serial <code>stop</code> is not overridden by the IR input — it holds
+    until the IR state changes again. Servo pulses are generated with LEDC at 50 Hz, 16-bit, mapped linearly from
+    500–2500 µs (0–180°):
+  </p>
+<pre class="code"><code>void setServoAngle(const uint32_t degrees) {
+  const uint32_t pulse_us =
+      kServoMinPulseUs + (kServoMaxPulseUs - kServoMinPulseUs) * degrees / 180UL;
+  const uint32_t period_us = 1000000UL / kServoFrequencyHz;
+  const uint32_t max_duty = (1UL &lt;&lt; kServoResolutionBits) - 1UL;
+  ledcWrite(kServoLedcChannel, pulse_us * max_duty / period_us);
+  g_servoAngleDeg = degrees;
+}</code></pre>
+
+  <h3>7.11 LCD status</h3>
+  <p>
+    A 16×2 I²C LCD (address 0x27) refreshes every 500 ms — status only, it can never gate control. Line 1 shows the
+    state and relay contact state (read back from the pad), line 2 the actual frequency and whether MCPWM is active:
+  </p>
+<pre class="code"><code>    snprintf(line1, sizeof(line1), "%-10s R:%-3s", stateShortName(g_state),
+             gpio_get_level(kRelayPin) ? "ON" : "OFF");
+    snprintf(line2, sizeof(line2), "%3" PRIu32 ".%02" PRIu32 "kHz SW:%-3s",
+             hz / 1000U, (hz % 1000U) / 10U, g_switchingActive ? "ON" : "OFF");</code></pre>
+  <p>
+    Example display while charging: line 1 <code>RUNNING&nbsp;&nbsp;&nbsp;R:ON&nbsp;</code>,
+    line 2 <code>150.09kHz SW:ON&nbsp;</code>. If faulted, line 1 becomes <code>FAULT - RESET</code> and line 2 the
+    fault reason. The library's <code>init()</code> blocks ~1 s once during <code>setup()</code>; each refresh costs
+    ~40 ms on the loop — acceptable because relay and IR events live on millisecond scales.
+  </p>
+
+  <h3>7.12 <code>setup()</code> — establishing the safe state first</h3>
+  <ol>
+    <li>Start Serial (115200).</li>
+    <li><code>configureSafeGpio()</code> — relay OFF, gate pins LOW before their drivers are enabled.</li>
+    <li><code>stopSwitchingOutputs()</code> — guarantee MCPWM is detached/off even after an abnormal reset.</li>
+    <li><code>Idle</code> state, then banner: “Safe state: relay OFF, switching outputs inactive.”</li>
+    <li>IR pin pull-up, LEDC + servo attached at 0°, LCD initialised.</li>
+    <li>Print help and status; note that IR control starts 2 s after boot (so a present object starts charging by itself).</li>
+  </ol>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="calculations">
+  <h2><span class="n">8</span> Calculations</h2>
+  <p>Every number below is either taken from <code>src/main.cpp</code> constants or derived; relay/regulator
+  numbers use typical datasheet values for the components named.</p>
+
+  <h3>8.1 MCPWM: period ticks and actual frequency</h3>
+  <div class="formula">
+    <span class="lbl">Period in timer ticks (integer division, as the driver does)</span>
+    N = ⌊f<sub>timer</sub> ⁄ f<sub>request</sub>⌋ = ⌊80 000 000 ⁄ 150 000⌋ = ⌊533.33⌋ = <strong>533 ticks</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Actual switching frequency</span>
+    f<sub>actual</sub> = f<sub>timer</sub> ⁄ N = 80 000 000 ⁄ 533 = <strong>150 093.8 Hz ≈ 150.09 kHz</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Period and half-period (1 tick = 1 ⁄ 80 MHz = 12.5 ns)</span>
+    T = 533 × 12.5 ns = <strong>6.6625 µs</strong> &nbsp;&nbsp;·&nbsp;&nbsp; T ⁄ 2 = <strong>3.33125 µs</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Frequency tuning step (one tick)</span>
+    Δf ≈ f² ⁄ f<sub>timer</sub> = (150 000)² ⁄ 80 000 000 ≈ 281 Hz ≈ <strong>0.28 kHz per step</strong>
+  </div>
+  <p>
+    Sanity limit: the period register is 16 bits, so the slowest waveform this clock can make is
+    80 MHz ⁄ 65 535 ≈ 1.22 kHz — the firmware's 100 kHz floor is far inside the range. The LCD shows the
+    <em>actual</em> frequency (150 094 → “150.09kHz”), and <code>status</code> prints requested and actual side by
+    side.
+  </p>
+
+  <h3>8.2 Dead time: ticks, real delay, and conduction time</h3>
+  <div class="formula">
+    <span class="lbl">Ticks (group clock = 80 MHz → 12.5 ns/tick)</span>
+    ticks = ⌈t<sub>dt</sub> × f<sub>group</sub>⌉ = ⌈700 ns × 80 MHz⌉ = <strong>56 ticks</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Delay the hardware likely produces (driver programs ticks + 1)</span>
+    t<sub>dt,hw</sub> ≈ (56 + 1) × 12.5 ns = <strong>712.5 ns</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Conduction time per MOSFET per half cycle</span>
+    t<sub>cond</sub> = T ⁄ 2 − t<sub>dt,hw</sub> = 3331.25 ns − 712.5 ns = <strong>2618.75 ns ≈ 2.62 µs</strong> (≈ 78.6 % of the half period)
+  </div>
+  <div class="formula">
+    <span class="lbl">Why 700 ns? Worst-case budget</span>
+    TLP250 propagation: 0.15 µs typ, <strong>0.5 µs max</strong> → opto-to-opto skew can approach 0.5 µs;
+    IRF840 turn-off (t<sub>d(off)</sub> + t<sub>f</sub>) ≈ 69 ns. 700 ns ≥ worst-case skew + turn-off, with margin.
+  </div>
+  <p>
+    The compile-time guard <code>kDeadTimeNs × 4 &lt; 1 ⁄ f<sub>max</sub></code> checks 2.8 µs &lt; 5 µs, i.e. even
+    at 200 kHz the dead time is less than a quarter of a half-cycle. Reduce these values only after measuring
+    gate-to-source waveforms on real hardware.
+  </p>
+
+  <h3>8.3 Start/stop timing budget (firmware waits vs relay mechanics)</h3>
+  <div class="formula">
+    <span class="lbl">Precharge (PWM before bus)</span>
+    20 ms ÷ 6.6625 µs ≈ <strong>3000 switching periods</strong> of waveform before the relay may close — MCPWM and
+    dead time fully settled, no first-cycle glitch reaches a powered bridge.
+  </div>
+  <div class="formula">
+    <span class="lbl">Contact settle after coil ON</span>
+    50 ms ≥ 4× typical operate time (5–10 ms) + contact bounce (1–3 ms) → state <code>Running</code> only after the
+    contacts are electrically quiet.
+  </div>
+  <div class="formula">
+    <span class="lbl">Dropout before gate drive is removed</span>
+    80 ms ≥ 8× typical release time (≤ 10 ms) → when <code>stopSwitchingOutputs()</code> runs, the +V bus is already
+    isolated and decaying.
+  </div>
+
+  <h3>8.4 Relay coil current, 7805 dissipation and thermals</h3>
+  <p>Using a typical 5 V class relay (e.g. SRD-05VDC-SL-C class: coil ≈ 70 Ω):</p>
+  <div class="formula">
+    <span class="lbl">Coil current and power</span>
+    I<sub>coil</sub> = 5 V ⁄ 70 Ω = <strong>71.4 mA</strong> &nbsp;&nbsp;·&nbsp;&nbsp;
+    P<sub>coil</sub> = 5 V × 71.4 mA ≈ <strong>0.36 W</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">7805 dissipation (linear regulator: the voltage drop becomes heat)</span>
+    P<sub>7805</sub> = (V<sub>in</sub> − V<sub>out</sub>) × I<sub>load</sub> = (12 − 5) × 0.0714 ≈ <strong>0.50 W</strong>
+    (plus ~0.03–0.06 W quiescent)
+  </div>
+  <div class="formula">
+    <span class="lbl">Junction temperature rise, TO-220 with no heatsink (θ<sub>JA</sub> ≈ 65 °C/W)</span>
+    ΔT ≈ P × θ<sub>JA</sub> = 0.50 × 65 ≈ <strong>33 °C above ambient</strong> → e.g. ~63 °C junction at 30 °C ambient (safe, but warm)
+  </div>
+  <table class="tbl">
+    <thead><tr><th>5 V rail load</th><th>7805 dissipation</th><th>Rise, no heatsink</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>71 mA (relay only)</td><td>0.50 W</td><td>~33 °C</td><td>OK; small heatsink recommended</td></tr>
+      <tr><td>150 mA</td><td>1.05 W</td><td>~68 °C</td><td>Heatsink required</td></tr>
+      <tr><td>250 mA</td><td>1.75 W</td><td>~114 °C</td><td>Heatsink required</td></tr>
+      <tr><td>650 mA (servo stall)</td><td>4.55 W</td><td>~296 °C ✗</td><td>Never — use a separate servo supply</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Other 7805 checks: dropout (~2 V) — 12 V input is comfortably above the ~7.5 V minimum; max input 35 V; add the
+    datasheet capacitors (0.33 µF in, 0.1 µF out) to keep it stable. If the 12 V rail runs at 13–14 V, every number
+    above scales up (~0.55–0.65 W) — still fine for the relay-only load.
+  </p>
+
+  <h3>8.5 Optocoupler LED, CTR budget and relay-driver base current</h3>
+  <div class="formula">
+    <span class="lbl">Opto LED series resistor (GPIO 3.3 V, LED V<sub>f</sub> ≈ 1.2 V)</span>
+    R = (V<sub>GPIO</sub> − V<sub>f</sub>) ⁄ I<sub>f</sub> = (3.3 − 1.2) ⁄ 9.5 mA ≈ 221 Ω → use <strong>220 Ω</strong>;
+    with 220 Ω, I<sub>f</sub> ≈ 9.5 mA (well inside the GPIO's source capability and the opto's rating)
+  </div>
+  <div class="formula">
+    <span class="lbl">Current available on the phototransistor side (CTR ≥ 50 % worst case)</span>
+    I<sub>c,opto</sub> = CTR × I<sub>f</sub> ≥ 0.5 × 9.5 mA ≈ <strong>4.7 mA</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Base current the 2N2222 actually needs (h<sub>FE,min</sub> ≈ 100 at 70 mA)</span>
+    I<sub>b,min</sub> = I<sub>coil</sub> ⁄ h<sub>FE</sub> = 71.4 mA ⁄ 100 ≈ <strong>0.71 mA</strong>
+    → the opto can supply ≥ 6× that, so the transistor is driven deep into saturation
+  </div>
+  <div class="formula">
+    <span class="lbl">Transistor loss and contact loss</span>
+    P<sub>Q</sub> ≈ V<sub>CE(sat)</sub> × I<sub>C</sub> ≈ 0.25 V × 71.4 mA ≈ <strong>18 mW</strong> &nbsp;·&nbsp;
+    P<sub>contact</sub> ≈ 50 mΩ × I<sub>bus</sub>²  (≈ 0.2 W at 2 A — vs several watts in the old IRF840 module)
+  </div>
+
+  <h3>8.6 Servo PWM duty calculation (LEDC)</h3>
+  <div class="formula">
+    <span class="lbl">Counts per microsecond at 50 Hz / 16-bit</span>
+    period = 1 ⁄ 50 Hz = 20 000 µs &nbsp;·&nbsp; counts/µs = 65 536 ⁄ 20 000 = <strong>3.2768</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Pulse → duty count (duty = pulse_us × 65 535 ⁄ 20 000, integer)</span>
+    0° → 500 µs → <strong>1638</strong> &nbsp;·&nbsp; 45° → 1000 µs → <strong>3276</strong> &nbsp;·&nbsp; 180° → 2500 µs → <strong>8191</strong>
+  </div>
+  <div class="formula">
+    <span class="lbl">Resolution of the angle</span>
+    1 count = 0.305 µs ≈ <strong>0.0275°</strong> — far finer than the servo's own dead band.
+  </div>
+  <p>
+    The LEDC divider 80 MHz ⁄ (50 Hz × 65 536) = 24 + 106/256 is exactly representable by the hardware divider, so
+    the 50 Hz frame rate is exact; 45° is produced as <code>500 + 2000 × 45 ⁄ 180 = 1000 µs</code>.
+  </p>
+
+  <h3>8.7 Power-stage resonance (context for what the relay feeds)</h3>
+  <div class="formula">
+    <span class="lbl">Series capacitor for L ≈ 79 µH at 150 kHz</span>
+    C = 1 ⁄ ((2π × 150 kHz)² × 79 µH) ≈ 1 ⁄ (8.883 × 10¹¹ × 79 × 10⁻⁶) ≈ 14.25 nF → <strong>~14.2 nF</strong> (e.g. 10 nF + 4.7 nF film, ≥ 630 V DC)
+  </div>
+  <p>
+    Hazard reminder (design notes, calculated not measured): at resonance with no receiver, ~5.1 A rms in the loop
+    and ~380 V rms across the capacitor. Commission at 2–3 V, current-limited, receiver present; operate slightly
+    above resonance to keep the IRF840 body diodes out of hard recovery.
+  </p>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="algorithms">
+  <h2><span class="n">9</span> Algorithms</h2>
+
+  <h3>9.1 Main loop — cooperative round-robin</h3>
+<pre class="code"><code>loop():
+  serviceSerial()        → parse &amp; dispatch console commands (non-blocking)
+  serviceIrControl()     → debounce IR, move servo, request auto run/stop
+  serviceStateMachine()  → time-based transitions (relay/PWM sequencing)
+  updateLcd()            → refresh display only if 500 ms elapsed
+  delay(1)               → yield to the RTOS idle task
+
+Hardware: MCPWM keeps producing the 150 kHz waveform autonomously.
+No firmware latency can jitter the power waveform.</code></pre>
+
+  <h3>9.2 State machine — states and transitions</h3>
+  <table class="tbl">
+    <thead><tr><th>From</th><th>Trigger</th><th>To</th><th>Side effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>Idle</code></td><td>IR-on</td><td><code>StartingPwm</code></td><td>MCPWM starts with relay OFF</td></tr>
+      <tr><td><code>StartingPwm</code></td><td>+20 ms (<code>kPwmPrechargeMs</code>)</td><td><code>WaitingRelaySettle</code></td><td><strong>Relay coil energized (contacts close)</strong></td></tr>
+      <tr><td><code>WaitingRelaySettle</code></td><td>+50 ms (<code>kRelaySettleMs</code>)</td><td><code>Running</code></td><td>Powered transfer active</td></tr>
+      <tr><td><code>Running</code></td><td><code>stop</code> or IR-off</td><td><code>StoppingRelayDropout</code></td><td><strong>Relay coil de-energized first</strong>; PWM keeps running</td></tr>
+      <tr><td><code>StoppingRelayDropout</code></td><td>+80 ms (<code>kRelayDropoutMs</code>)</td><td><code>Idle</code></td><td>Pins detached LOW → MCPWM stopped → dead time off</td></tr>
+      <tr><td>any active state</td><td>any MCPWM API error</td><td><code>FaultLocked</code></td><td>Relay OFF + gates LOW + timer stopped <em>immediately</em></td></tr>
+      <tr><td><code>FaultLocked</code></td><td>reset only</td><td><code>Idle</code> (after boot)</td><td>Sticky by design</td></tr>
+    </tbody>
+  </table>
+
+  <h3>9.3 Run sequence — timeline (with the actual relay)</h3>
+  <ul class="timeline">
+    <li><strong>t = 0 ms — IR-on run accepted.</strong> Checks: <code>requireIdle()</code> and both arm flags. Relay OFF, gate pins LOW.</li>
+    <li><strong>t ≈ 0 ms — <code>startSwitchingOutputs()</code>.</strong> Pins stay GPIO-LOW → clocks set to 80 MHz → <code>mcpwm_init()</code> (timer runs, dead time still bypassed) → <code>mcpwm_deadtime_enable()</code> → wait 50 µs (≈ 7.5 periods) for the delays to latch → route GPIO14/GPIO26 to MCPWM0A/0B last. The 150 kHz waveform is now live, but the bus is dead.</li>
+    <li><strong>t = 20 ms — relay coil energized.</strong> GPIO13 HIGH through Optocoupler 1 and the NPN driver; contacts close ~5–10 ms later; 12 V appears on the +V bus while a clean waveform is already running. State: <code>WaitingRelaySettle</code>.</li>
+    <li><strong>t = 70 ms — <code>Running</code>.</strong> Contact bounce is over; the bridge is transferring power to the TX coil.</li>
+  </ul>
+
+  <h3>9.4 Stop sequence — timeline</h3>
+  <ul class="timeline">
+    <li><strong>t = 0 ms — <code>stop</code> / IR-off.</strong> Relay coil de-energized <em>first</em>: contacts open within ~5–10 ms; the +V bus is now isolated and decaying while the gates keep switching harmlessly. State: <code>StoppingRelayDropout</code>.</li>
+    <li><strong>t = 80 ms — gate drive removed.</strong> <code>forceSwitchPinsLowAsGpio()</code> (detach pins from MCPWM and force LOW) → <code>mcpwm_stop()</code> → <code>mcpwm_deadtime_disable()</code>. State: <code>Idle</code>.</li>
+  </ul>
+
+  <h3>9.5 Fault path — immediate</h3>
+<pre class="code"><code>fault(reason):
+  relayOff()                  # coil off right now — no 80 ms courtesy
+  forceSwitchPinsLowAsGpio()  # gates LOW right now — supersedes all sequencing
+  mcpwm_stop()                # if the timer was running
+  state = FaultLocked         # sticky, survives until reset
+  print reason to serial + LCD</code></pre>
+  <p>
+    Rationale: on a fault the priority order flips — removing gate drive matters more than waiting for the relay to
+    drop out. The relay is still commanded OFF in the same instant, so both energy paths die immediately.
+  </p>
+
+  <h3>9.6 IR control — debounce and auto run/stop</h3>
+<pre class="code"><code>every loop pass:
+  raw = (digitalRead(GPIO27) == LOW)        # active-low sensor
+  if raw changed: raw_since = now           # restart debounce timer
+
+  if now ≥ 2000 ms (boot delay)
+     and raw stable ≥ 100 ms
+     and raw ≠ reported_state:
+        reported_state = raw
+        if raw:  servo = 45°; run_pending = true      # object present
+        else:    servo = 0°; run_pending = false; stopController()
+
+  if run_pending and state == Idle:
+        run_pending = false; requestPoweredRun()      # retry-safe</code></pre>
+  <ul>
+    <li>Acts once per stable change, plus once at boot if an object is already present (after the 2 s delay).</li>
+    <li>A manual <code>stop</code> while IR is on is respected: the firmware won't restart until the IR state changes.</li>
+    <li>The <code>run_pending</code> retry closes the race “IR returns while the stop sequence is still finishing”.</li>
+  </ul>
+
+  <h3>9.7 Serial command parsing</h3>
+<pre class="code"><code>serviceSerial():
+  for each incoming byte:
+    on '\n' or '\r': dispatch(buffer); buffer = ""
+    else if buffer not full: append        # capped at 48 chars
+    else: buffer = ""; print "Command too long; cleared."
+
+dispatch(buffer):
+  trim + lowercase
+  "stop"   → always allowed → relay-first shutdown
+  "freq N" → requireIdle + range check 100 000..200 000 → store requested Hz
+  "status" → print state/fault/relay/switching/freq/dead time/IR/servo/flags
+  "help"   → command help</code></pre>
+
+  <h3>9.8 Frequency change — why Idle-only</h3>
+  <p>
+    The legacy MCPWM driver writes the period register immediately; changing it on a running timer can stretch one
+    switching cycle. <code>freq</code> therefore only stores the request while <code>Idle</code>, and the new value
+    is applied by the next IR-triggered start. The console and LCD always show the <em>recomputed
+    actual</em> frequency, not the requested one (150 000 requested → 150.09 kHz actual at 80 MHz).
+  </p>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="commands">
+  <h2><span class="n">10</span> Serial Command Reference (115200 baud)</h2>
+  <table class="tbl">
+    <thead><tr><th>Command</th><th>Allowed when</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><code>help</code></td><td>any state</td><td>Print the command list.</td></tr>
+      <tr><td><code>status</code></td><td>any state</td><td>State, fault reason, relay pad level, switching, requested/actual frequency, dead time (ns and ticks), IR, servo angle, arm flags.</td></tr>
+      <tr><td><code>stop</code></td><td>any state</td><td>Relay OFF first → 80 ms → gates LOW and MCPWM stopped → <code>Idle</code>.</td></tr>
+      <tr><td><code>freq &lt;hz&gt;</code></td><td>Idle only</td><td>Set requested switching frequency, 100 000–200 000 Hz; applied on the next start; reports actual Hz.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    There is no manual turn-on command. IR-on (Idle + arm flags) runs the powered sequence:
+    PWM → 20 ms → relay ON → 50 ms → <code>Running</code>. IR-off calls <code>stop</code>. A serial
+    <code>stop</code> is not reversed by the IR state until the IR input changes.
+  </p>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="safety">
+  <h2><span class="n">11</span> Safety, Verification Status &amp; Operating Limits</h2>
+
+  <h3>11.1 Guaranteed safe behaviours (by construction)</h3>
+  <ul>
+    <li><strong>Boot:</strong> relay coil de-energized (GPIO13 LOW, latched before drivers enable), both gate pins LOW, MCPWM off; <code>stopSwitchingOutputs()</code> re-enforced at startup.</li>
+    <li><strong>No shoot-through window:</strong> dead time is enabled and settled <em>before</em> the pins are routed to MCPWM; pins are detached and forced LOW <em>before</em> the timer is stopped.</li>
+    <li><strong>Faults fail safe:</strong> any MCPWM error latches <code>FaultLocked</code> — relay OFF and gates LOW immediately, sticky until reset.</li>
+    <li><strong>No unsolicited power:</strong> the IR-triggered run requires compile-time arm flags, and there is no serial turn-on command.</li>
+    <li><strong>Polarity guard:</strong> a <code>static_assert</code> blocks building with inverted gate command, because the safe state (LOW) assumes active-high gate drive.</li>
+  </ul>
+
+  <h3>11.2 Not verified on hardware (as of 2026-10-12)</h3>
+  <ul>
+    <li>Dead time (700 ns / ~712.5 ns) has not been confirmed on a scope; the TLP250 delays and IRF840 turn-off are datasheet values.</li>
+    <li>The arm flags are <em>true</em> (recorded 2026-10-11 at user request) but no gate-to-source waveform, bus current, or thermal measurement exists.</li>
+    <li>The relay + 7805 revision itself: coil current, contact drop, 7805 temperature, and the 20/50/80 ms windows are calculated, not measured (relay datasheet values assumed).</li>
+    <li>High-side TLP250 floating supply (bootstrap / floating 15 V) has never been confirmed.</li>
+    <li>No oscilloscope capture of the first switching cycle exists; the “never both HIGH” claim follows from the driver sequence, not from measurement.</li>
+  </ul>
+
+  <h3>11.3 Required protections before full power</h3>
+  <ul>
+    <li><strong>Fuse</strong> in the 12 V feed (before the relay contact), sized to the expected bus current.</li>
+    <li><strong>Fast overcurrent shutdown</strong> (e.g. MCPWM fault input with one-shot trip). The relay is millisecond-scale and cannot protect MOSFETs — it gates the supply, it is not the protection.</li>
+    <li><strong>External ~10 kΩ pull-downs</strong> on GPIO13/14/26 (JTAG pins are uncontrolled during boot).</li>
+    <li><strong>Servo on its own 5 V supply</strong> with shared ground; never on the relay's 7805 (see §8.4).</li>
+    <li><strong>LCD I²C pull-up review</strong>: backpack modules often pull SDA/SCL to 5 V — use 3.3 V-safe pull-ups or a level shifter.</li>
+    <li><strong>Commission at 2–3 V, current-limited</strong>, receiver present; watch for the ~380 V rms / ~5.1 A rms no-receiver resonance hazard.</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="ct">Operating limits inherited from the design notes</span>
+    The IRF840 (0.85–1.5 Ω) is a poor fit for a 12 V bus — low-R<sub>DS(on)</sub> parts (e.g. IRFZ44N class) are
+    recommended. Run slightly above resonance. Keep the relay contact within its DC rating (typical small relays:
+    10 A / 30 V DC — verify yours). The relay is an on/off supply gate only; nothing in this firmware makes it fast.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="card" id="glossary">
+  <h2><span class="n">12</span> Glossary</h2>
+  <table class="tbl">
+    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MCPWM</strong></td><td>ESP32 Motor Control PWM peripheral; generates the 150 kHz complementary waveform in hardware.</td></tr>
+      <tr><td><strong>Dead time</strong></td><td>Guaranteed both-switches-OFF interval at every bridge transition; prevents shoot-through. 700 ns here, measured in 12.5 ns group-clock ticks.</td></tr>
+      <tr><td><strong>Shoot-through</strong></td><td>Both half-bridge MOSFETs conducting simultaneously — a direct 12 V short through the bridge. Dead time and the start/stop ordering exist to prevent it.</td></tr>
+      <tr><td><strong>Complementary output</strong></td><td>MCPWM0B is the inverse of MCPWM0A, with dead-time gaps inserted on both edges.</td></tr>
+      <tr><td><strong>Half bridge</strong></td><td>Two switches in series across the bus; the midpoint (switch node) drives the resonant tank (series C + TX coil).</td></tr>
+      <tr><td><strong>Optocoupler / CTR</strong></td><td>LED + phototransistor package for level shifting/protection; Current Transfer Ratio — output current ÷ input current (≥ 50 % used here).</td></tr>
+      <tr><td><strong>Flyback diode</strong></td><td>1N4007 across the relay coil; clamps the inductive kick when the coil is switched off.</td></tr>
+      <tr><td><strong>Operate / release time</strong></td><td>Relay coil-energize → contacts closed / coil-off → contacts open times (typically 5–10 ms each).</td></tr>
+      <tr><td><strong>NO / COM contact</strong></td><td>Normally-open and common relay terminals; wired so that a de-energized (fail) state means “bus disconnected”.</td></tr>
+      <tr><td><strong>LEDC</strong></td><td>ESP32 LED PWM peripheral, used here at 50 Hz / 16-bit for the servo pulse.</td></tr>
+      <tr><td><strong>Debounce</strong></td><td>Requiring a stable input for 100 ms before accepting an IR state change.</td></tr>
+      <tr><td><strong>FaultLocked</strong></td><td>Sticky fail-safe state: relay and gates forced off, cleared only by reset.</td></tr>
+      <tr><td><strong>Arm flags</strong></td><td>Compile-time booleans (<code>kPowerStageTopologyVerified</code>, <code>kAllowRelayEnergizedRun</code>) that must be true before the IR-triggered run is permitted.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <p>
+    Generated 2026-10-12 · Reflects firmware <code>src/main.cpp</code> (PlatformIO <code>esp32dev</code>, espressif32&nbsp;7.0.0) and the
+    relay&nbsp;+&nbsp;7805 hardware revision. Electrical values marked as assumed are unverified until scoped/measured.
+    Keep this document, <code>docs/project-memory.md</code> and <code>docs/wpt-controller-design.md</code> consistent when hardware or firmware changes.
+  </p>
+</footer>
+
+</body>
+</html>

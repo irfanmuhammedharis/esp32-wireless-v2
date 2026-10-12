@@ -28,6 +28,8 @@ current official documentation first. API details matter here.
 - GPIO21/GPIO22 are I2C SDA/SCL for a 16x2 status LCD (LiquidCrystal_I2C,
   `updateLcd()` in `src/main.cpp`). The user wants this kept simple. The
   display is status only and must never gate control.
+- GPIO27 is the IR sensor input (LOW = detecting) and GPIO25 is the servo
+  signal (LEDC channel 0, 50 Hz).
 - Switching target: 150 kHz.
 - Waveform generation must use ESP32 MCPWM hardware. Do not generate the 150 kHz
   waveform with `digitalWrite()`, `delayMicroseconds()`, timer polling, or a busy
@@ -83,10 +85,10 @@ Commands currently implemented:
 - `help`: print command help.
 - `status`: print controller state, relay state, switching state, frequency,
   dead time, and verification gates.
-- `pwm`: start 150 kHz GPIO14/GPIO26 switching with relay OFF for oscilloscope
-  testing.
-- `run`: refused by default until compile-time verification gates are true.
-  `kAutoRunAtBoot` (currently true, user request) starts it 2 s after boot.
+- No manual turn-on command (user request 2026-10-12): the IR sensor is the
+  only way to start. IR on (LOW) -> servo 45 deg + powered run, IR off ->
+  servo 0 deg + stop (acts 2 s after boot and on each IR change). The run
+  is still refused unless the compile-time verification gates are true.
 - `freq <hz>`: set switching frequency 100000..200000 Hz, Idle only.
 - `stop`: turn relay OFF, wait for dropout, then stop PWM and force switch pins
   LOW.

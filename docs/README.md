@@ -34,6 +34,8 @@ controls a wireless power transfer transmitter prototype:
 | `../.agents/project-memory.md` | Pointer for agents that inspect `.agents/` first. |
 | `project-memory.md` | Persistent memory: current state, decisions, risks, and next tasks. |
 | `wpt-controller-design.md` | Hardware/firmware design note and commissioning procedure. |
+| `code-explanation.html` | HTML working document: code explanation, calculations, and algorithms (relay + 7805 revision). |
+| `meta-prompt.md` | Re-runnable meta prompt used to generate `code-explanation.html`. |
 
 ## Status
 

@@ -70,11 +70,28 @@ constexpr uint32_t kRelayDropoutMs = 80UL;
 constexpr bool kPowerStageTopologyVerified = true;
 constexpr bool kAllowRelayEnergizedRun = true;
 
-// User request 2026-10-11: start the powered sequence (PWM, then GPIO13) by
-// itself after every boot/reset, including the reset caused by opening a
-// serial monitor. 'stop' cancels a pending auto-run and stops a running one.
-constexpr bool kAutoRunAtBoot = true;
-constexpr uint32_t kAutoRunDelayMs = 2000UL;
+// IR obstacle sensor (FC-51 style, LM393 output) on GPIO27. Power the module
+// from 3.3 V: at 5 V its pull-up drives 5 V into the ESP32 pin.
+// "IR on" = sensor detecting (output LOW, module LED lit).
+//   IR on  -> servo 45 deg, PWM + GPIO13 ON (wireless charging)
+//   IR off -> servo 0 deg, GPIO13 OFF, then PWM OFF
+// Acts on every IR change and once at startup, so it also runs at boot.
+constexpr uint8_t kIrPin = 27;
+constexpr bool kIrActiveLow = true;
+constexpr uint32_t kIrDebounceMs = 100UL;
+constexpr uint32_t kIrStartDelayMs = 2000UL; // after boot, before IR acts
+
+// Servo signal on GPIO25, LEDC 50 Hz. Power the servo from a separate 5 V
+// supply with GND shared with the ESP32 (servo current spikes can reset the
+// ESP32 if it shares the USB 5 V).
+constexpr uint8_t kServoPin = 25;
+constexpr uint8_t kServoLedcChannel = 0;
+constexpr uint32_t kServoFrequencyHz = 50UL;
+constexpr uint8_t kServoResolutionBits = 16;
+constexpr uint32_t kServoMinPulseUs = 500UL;  // 0 deg (typical SG90/MG90S)
+constexpr uint32_t kServoMaxPulseUs = 2500UL; // 180 deg
+constexpr uint32_t kServoIdleAngleDeg = 0UL;
+constexpr uint32_t kServoTransferAngleDeg = 45UL;
 
 // TLP250 is non-inverting: input LED ON -> output HIGH -> MOSFET ON. This is
 // true only if the GPIO sources current into the LED anode. If the GPIO sinks
@@ -97,7 +114,6 @@ constexpr uint32_t kLcdUpdateMs = 500UL;
 
 enum class ControllerState : uint8_t {
   Idle,
-  ScopePwmOnly,
   StartingPwm,
   WaitingRelaySettle,
   Running,
@@ -108,7 +124,8 @@ enum class ControllerState : uint8_t {
 ControllerState g_state = ControllerState::Idle;
 uint32_t g_stateEnteredMs = 0;
 bool g_switchingActive = false;
-bool g_autoRunPending = false;
+bool g_irDetecting = false;
+uint32_t g_servoAngleDeg = kServoIdleAngleDeg;
 uint32_t g_switchingFrequencyHz = kDefaultSwitchingFrequencyHz;
 const char *g_faultReason = "none";
 LiquidCrystal_I2C g_lcd(kLcdAddress, 16, 2);
@@ -263,11 +280,6 @@ bool isFaulted() {
 }
 
 void stopController() {
-  if (g_autoRunPending) {
-    g_autoRunPending = false;
-    Serial.println("Auto-run cancelled.");
-  }
-
   if (isFaulted()) {
     relayOff();
     stopSwitchingOutputs();
@@ -300,23 +312,10 @@ bool requireIdle(const char *command) {
   return false;
 }
 
-void requestScopePwmOnly() {
-  if (!requireIdle("pwm")) {
-    return;
-  }
-
-  relayOff();
-  if (startSwitchingOutputs()) {
-    enterState(ControllerState::ScopePwmOnly);
-    Serial.printf("PWM active on GPIO14/GPIO26 at %" PRIu32 " Hz; relay remains OFF.\n",
-                  actualFrequencyHz(g_switchingFrequencyHz));
-  }
-}
-
+// Called only by the IR sensor; there is no manual turn-on command.
 void requestPoweredRun() {
   if (!canRunPoweredStage()) {
     Serial.println("Refusing RUN: topology/polarity are not verified in firmware.");
-    Serial.println("Use 'pwm' for relay-off oscilloscope checks, then update constants.");
     return;
   }
   if (!requireIdle("run")) {
@@ -369,8 +368,6 @@ const char *stateName(const ControllerState state) {
   switch (state) {
   case ControllerState::Idle:
     return "Idle";
-  case ControllerState::ScopePwmOnly:
-    return "ScopePwmOnly";
   case ControllerState::StartingPwm:
     return "StartingPwm";
   case ControllerState::WaitingRelaySettle:
@@ -390,8 +387,6 @@ const char *stateShortName(const ControllerState state) {
   switch (state) {
   case ControllerState::Idle:
     return "IDLE";
-  case ControllerState::ScopePwmOnly:
-    return "SCOPE PWM";
   case ControllerState::StartingPwm:
     return "STARTING";
   case ControllerState::WaitingRelaySettle:
@@ -441,6 +436,8 @@ void printStatus() {
   Serial.printf("freq requested=%" PRIu32 " Hz actual=%" PRIu32 " Hz deadtime=%" PRIu32 " ns (%" PRIu32 " ticks @ %" PRIu32 " MHz)\n",
                 g_switchingFrequencyHz, actualFrequencyHz(g_switchingFrequencyHz),
                 kDeadTimeNs, kDeadTimeTicks, static_cast<uint32_t>(kMcpwmGroupResolutionHz / 1000000UL));
+  Serial.printf("ir=%s servo=%" PRIu32 " deg\n", g_irDetecting ? "on" : "off",
+                g_servoAngleDeg);
   Serial.printf("topologyVerified=%s relayRunAllowed=%s gateActive=%s\n",
                 kPowerStageTopologyVerified ? "true" : "false",
                 kAllowRelayEnergizedRun ? "true" : "false",
@@ -450,8 +447,7 @@ void printStatus() {
 void printHelp() {
   Serial.println();
   Serial.println("Commands:");
-  Serial.println("  pwm        Start GPIO14/GPIO26 switching, relay OFF (Idle only)");
-  Serial.println("  run        Start powered sequence only after compile-time verification");
+  Serial.println("  (Turn-on is IR only: IR on -> servo 45 deg + charge, IR off -> stop)");
   Serial.println("  stop       Relay OFF, then stop PWM after dropout delay");
   Serial.println("  freq <hz>  Set switching frequency, 100000..200000 (Idle only)");
   Serial.println("  status     Print controller state");
@@ -467,11 +463,7 @@ void handleSerialCommand(const String &raw_command) {
     return;
   }
 
-  if (command == "pwm") {
-    requestScopePwmOnly();
-  } else if (command == "run") {
-    requestPoweredRun();
-  } else if (command == "stop") {
+  if (command == "stop") {
     stopController();
   } else if (command.startsWith("freq ")) {
     String argument = command.substring(5);
@@ -534,10 +526,61 @@ void serviceStateMachine() {
     break;
 
   case ControllerState::Idle:
-  case ControllerState::ScopePwmOnly:
   case ControllerState::Running:
   case ControllerState::FaultLocked:
     break;
+  }
+}
+
+void setServoAngle(const uint32_t degrees) {
+  const uint32_t pulse_us =
+      kServoMinPulseUs + (kServoMaxPulseUs - kServoMinPulseUs) * degrees / 180UL;
+  const uint32_t period_us = 1000000UL / kServoFrequencyHz;
+  const uint32_t max_duty = (1UL << kServoResolutionBits) - 1UL;
+  ledcWrite(kServoLedcChannel, pulse_us * max_duty / period_us);
+  g_servoAngleDeg = degrees;
+}
+
+bool readIrDetecting() {
+  const int level = digitalRead(kIrPin);
+  return kIrActiveLow ? level == LOW : level == HIGH;
+}
+
+// The only way to turn on. A serial 'stop' holds until the IR state changes.
+void serviceIrControl() {
+  static bool have_state = false;
+  static bool last_raw = false;
+  static uint32_t raw_since_ms = 0;
+  static bool run_pending = false;
+
+  const uint32_t now = millis();
+  const bool raw = readIrDetecting();
+  if (raw != last_raw) {
+    last_raw = raw;
+    raw_since_ms = now;
+  }
+
+  if (now >= kIrStartDelayMs && now - raw_since_ms >= kIrDebounceMs &&
+      (!have_state || raw != g_irDetecting)) {
+    have_state = true;
+    g_irDetecting = raw;
+    if (g_irDetecting) {
+      Serial.println("IR on: servo 45 deg, transfer ON.");
+      setServoAngle(kServoTransferAngleDeg);
+      run_pending = true;
+    } else {
+      Serial.println("IR off: servo 0 deg, transfer OFF.");
+      setServoAngle(kServoIdleAngleDeg);
+      run_pending = false;
+      stopController();
+    }
+  }
+
+  // run only starts from Idle, e.g. after a quick IR off -> on while the
+  // stop sequence is still waiting for relay dropout.
+  if (run_pending && g_state == ControllerState::Idle) {
+    run_pending = false;
+    requestPoweredRun();
   }
 }
 
@@ -553,28 +596,23 @@ void setup() {
   Serial.println("ESP32 150 kHz WPT transmitter controller");
   Serial.println("Safe state: relay OFF, switching outputs inactive.");
 
+  pinMode(kIrPin, INPUT_PULLUP);
+  ledcSetup(kServoLedcChannel, kServoFrequencyHz, kServoResolutionBits);
+  ledcAttachPin(kServoPin, kServoLedcChannel);
+  setServoAngle(kServoIdleAngleDeg);
+
   // After the safe state: init() starts Wire on GPIO21/22 and takes ~1 s.
   g_lcd.init();
   g_lcd.backlight();
 
   printHelp();
   printStatus();
-
-  if (kAutoRunAtBoot && canRunPoweredStage()) {
-    g_autoRunPending = true;
-    Serial.printf("Auto-run in %" PRIu32 " ms; send 'stop' to cancel.\n",
-                  kAutoRunDelayMs);
-  }
+  Serial.println("IR control starts in 2 s.");
 }
 
 void loop() {
   serviceSerial();
-
-  if (g_autoRunPending && millis() >= kAutoRunDelayMs) {
-    g_autoRunPending = false;
-    requestPoweredRun();
-  }
-
+  serviceIrControl();
   serviceStateMachine();
   updateLcd();
   delay(1);

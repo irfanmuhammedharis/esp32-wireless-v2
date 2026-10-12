@@ -5,272 +5,218 @@ Last updated: 2026-10-11.
 This file is the durable memory for future AI agents. Keep it current whenever
 firmware behavior, hardware assumptions, or verification status changes.
 
-## Current State
+Legend: `[CONFIRMED]` seen in code, build, or source; `[USER]` stated by the
+user, not measured; `[ASSUMPTION]` chosen default; `[TODO]` open item;
+`[BLOCKER]` must be resolved before trusting powered operation.
 
-- `[CONFIRMED]` Project is a PlatformIO Arduino project.
-- `[CONFIRMED]` PlatformIO environment is `[env:esp32dev]`.
-- `[CONFIRMED]` Firmware lives in `src/main.cpp`.
-- `[CONFIRMED]` Documentation lives in `docs/`.
-- `[CONFIRMED]` Current firmware builds successfully for `esp32dev` using:
+## Current State (end of 2026-10-11)
+
+- Power stage: IRF840 **half bridge**, TLP250 gate drivers, 12 V supply
+  through a separate "power supply module" whose IRF840 switch (GPIO13) runs
+  hot. See "Supply Module" below.
+- Firmware: run is **armed**. The IR sensor is the only way to turn on
+  (IR on -> servo 45 deg + charge, IR off -> servo 0 deg + stop). The serial
+  `run` and `pwm` commands were removed 2026-10-12 at user request.
+- Board currently flashed (2026-10-12) with the IR-only firmware (no serial
+  `run`/`pwm`). Replaces the old `b9dd578` boot auto-run firmware. An object
+  in front of the IR sensor at boot still starts charging 2 s after every
+  reset (including opening a serial monitor). Not tested on hardware yet.
+- Git: public repo https://github.com/irfanmuhammedharis/esp32-wireless-v2.
+  Commit `b9dd578` is the state before the IR/servo feature. The IR-only
+  firmware and these docs were committed and pushed 2026-10-12.
+- Nothing has been measured with a scope: gate waveforms, dead time, bus
+  current, and capacitor value are all unverified.
+
+## Build And Toolchain
 
 ```bash
-/home/irfan/.platformio/penv/bin/platformio run
+/home/irfan/.platformio/penv/bin/platformio run -e esp32dev            # main firmware
+/home/irfan/.platformio/penv/bin/platformio run -e esp32dev -t upload  # flash main
+/home/irfan/.platformio/penv/bin/platformio run -e opto13_test -t upload  # GPIO13-only test
 ```
 
-Last known successful build:
+- `[CONFIRMED]` Platform pinned `espressif32 @ 7.0.0` = Arduino-ESP32 2.0.17
+  (`framework-arduinoespressif32 @ 3.20017.241212`) = ESP-IDF v4.4.7. Pinned
+  because the firmware uses the legacy `driver/mcpwm.h` API.
+- `[CONFIRMED]` `default_envs = esp32dev`, so a plain build or upload never
+  flashes the test program by mistake.
+- `[CONFIRMED]` `upload_speed = 115200`. 460800 fails on this board's
+  USB-serial link ("No serial data received" after the baud change).
+- `[CONFIRMED]` Project sources build with `-Wall -Wextra -Werror`. On this
+  toolchain `uint32_t` is `unsigned int`, so use `PRIu32` in printf, not `%lu`.
+- Library: `marcoschwartz/LiquidCrystal_I2C @ 1.1.4` (user's choice). Its
+  library.json lists only AVR/ESP8266, but it builds under the default
+  `lib_compat_mode = soft`.
+- Last build (IR/servo version): RAM 22148 B (6.8%), Flash 305313 B (23.3%).
+- Opening any serial monitor resets the ESP32 (auto-reset circuit). The Arduino
+  IDE serial monitor holding `/dev/ttyUSB0` makes uploads fail with "port is
+  busy".
 
-- PlatformIO Core: 6.2.0.
-- Platform: Espressif 32 7.0.0.
-- Board: Espressif ESP32 Dev Module.
-- Arduino-ESP32 package: `framework-arduinoespressif32 @ 3.20017.241212+sha.dcc1105b`.
-- Platform pinned in `platformio.ini` as `espressif32 @ 7.0.0` (bundles
-  ESP-IDF v4.4.7). Project sources build with `-Wall -Wextra -Werror`.
-- Library: `marcoschwartz/LiquidCrystal_I2C @ 1.1.4` (LCD, user's choice).
-  Its library.json lists only atmelavr/espressif8266, but it builds and is
-  accepted under PlatformIO's default `lib_compat_mode = soft`.
-- RAM usage: 22012 bytes, 6.7%.
-- Flash usage: 298037 bytes, 22.7%.
+## Pin Map
 
-## Firmware Summary
-
-`src/main.cpp` implements:
-
-- Safe boot: relay OFF, GPIO14 LOW, GPIO26 LOW.
-- GPIO13/14/26 are configured `GPIO_MODE_INPUT_OUTPUT` at boot, so
-  `gpio_get_level()` reads back the real relay pad level. With output-only
-  mode the input path is off and always reads 0; that was a real bug that
-  showed `relay=OFF` while running, fixed and verified on 2026-10-11.
-- `[CONFIRMED on hardware 2026-10-11]` `run` -> `state=Running relay=ON
-  switching=ON` at 150093 Hz; `stop` -> relay OFF, PWM OFF, Idle. Serial
-  only: gate waveforms and bus current were not measured.
-- MCPWM group and timer clocks set to 80 MHz. 150 kHz request -> peak 533
-  ticks -> 150.09 kHz actual, ~0.28 kHz tuning steps near 150 kHz.
-- Dead time: 700 ns = 56 ticks of the 12.5 ns group clock (see dead-time
-  notes below).
-- Start order: MCPWM is fully configured (timer running, dead time enabled)
-  while GPIO14/GPIO26 are held LOW as plain GPIO; only then are the pins routed
-  to MCPWM.
-- Stop/fault order: GPIO14/GPIO26 are detached from MCPWM and forced LOW first,
-  then the MCPWM timer is stopped.
-- Serial command interface at 115200 baud.
-- `pwm` command for relay-off oscilloscope testing (Idle only).
-- `run` command locked out by default (Idle only when armed).
-- `kAutoRunAtBoot = true` (user request 2026-10-11): 2 s after every boot or
-  reset, the firmware runs the powered sequence by itself (PWM, then GPIO13
-  20 ms later). Opening a serial monitor resets the board, so it also
-  auto-runs. `stop` cancels a pending auto-run.
-- `freq <hz>` sets 100000..200000 Hz, Idle only; applied on next start.
-- `stop` command that turns relay OFF first, waits for dropout, then stops
-  switching and forces GPIO14/GPIO26 LOW.
-- `FaultLocked` is sticky: any MCPWM API failure turns the relay and gates OFF
-  immediately and latches until reset. `stop` cannot clear it.
-
-## 16x2 I2C LCD (in `src/main.cpp`)
-
-- Simple LiquidCrystal_I2C code (user asked for simple, no extra module).
-  Address `kLcdAddress = 0x27` (change to 0x3F for PCF8574A). SDA GPIO21,
-  SCL GPIO22 (Wire defaults, started by `lcd.init()`).
-- `updateLcd()` rewrites both lines every 500 ms. Line 1 shows state + relay
-  (`RUNNING    R:ON`), line 2 shows actual frequency + switching
-  (`150.09kHz SW:ON`). On a fault it shows `FAULT - RESET` + the reason.
-- Cost: `lcd.init()` blocks ~1.1 s in `setup()` (after the safe state is
-  set). Each refresh blocks the loop ~40 ms (32 chars x ~1.3 ms), which delays
-  serial command handling by up to that much. No I2C error detection.
-- `[TODO]` Backpack level: most backpacks run at 5 V with pull-ups to 5 V on
-  SDA/SCL, and ESP32 pins are not 5 V tolerant. Use a BSS138/PCA9306 level
-  shifter, or remove the backpack pull-ups and fit ~3.3 k to 3.3 V.
-- `[TODO]` On the first hardware test (2026-10-11), nothing answered at
-  0x27/0x3F. Check wiring and power.
-
-## MCPWM Driver Facts (verified against ESP-IDF v4.4.7 source)
-
-- `[CONFIRMED]` Default legacy-driver clocks are group 10 MHz, timer 1 MHz.
-  `mcpwm_init()` computes `peak = timer_clk / frequency` with integer
-  division, so the old firmware produced 1 MHz / 6 = 166.7 kHz, not 150 kHz.
-- `[CONFIRMED]` `mcpwm_init()` starts the timer itself.
-- `[CONFIRMED]` The dead-time module resets to bypass (`dt_a_outbypass` and
-  `dt_b_outbypass` default 1). With equal A/B duty, A and B are identical until
-  `mcpwm_deadtime_enable()` runs. The old firmware had the pins routed during
-  that window, which turned both diagonal pairs ON together (shoot-through)
-  for microseconds on every start. Fixed by routing pins last.
-- `[CONFIRMED]` Dead-time ticks use the MCPWM group clock (`dt_clk_sel = 0`),
-  not the timer clock. Changing group resolution changes dead-time units.
-- `[ASSUMPTION]` The driver writes `red + 1` and the LL layer subtracts 1, so
-  the real delay is probably `(ticks + 1)` group clocks (712.5 ns for 56
-  ticks). Confirm on the scope.
-- `[CONFIRMED]` Changing frequency on a running timer with this driver updates
-  the period immediately. If the counter is above the new period, it can run on
-  to 65535 with one output stuck ON. That is why `freq` is Idle-only.
-
-## Pin And Signal Memory
-
-| ESP32 GPIO | Function | Current firmware treatment |
+| GPIO | Function | Firmware treatment |
 |---|---|---|
-| GPIO13 | Relay through Optocoupler 1 | Relay enable only, default OFF. |
-| GPIO14 | TLP250 2 and 3 | MCPWM0A command A, diagonal pair A. |
-| GPIO26 | TLP250 4 and 5 | MCPWM0B command B, diagonal pair B. |
-| GPIO21 | LCD I2C SDA | 16x2 LCD backpack at 0x27, status only. |
-| GPIO22 | LCD I2C SCL | 16x2 LCD backpack at 0x27, status only. |
+| 13 | Opto 1 -> supply-module IRF840 switch ("relay") | Default OFF. ON in the run sequence 20 ms after PWM starts. |
+| 14 | TLP250 2+3 -> half-bridge **high side** | MCPWM0A, complementary with dead time. |
+| 26 | TLP250 4+5 -> half-bridge **low side** | MCPWM0B = inverse of A with dead time. |
+| 21 / 22 | LCD I2C SDA / SCL | LiquidCrystal_I2C at 0x27. |
+| 27 | IR obstacle sensor OUT | `INPUT_PULLUP`, LOW = "IR on" (detecting). |
+| 25 | Servo signal | LEDC ch 0, 50 Hz, 500-2500 us = 0-180 deg. |
 
-Critical distinction: GPIO13 is not a 150 kHz output.
+GPIO13/14/26 are configured `GPIO_MODE_INPUT_OUTPUT` so `gpio_get_level()`
+reads back the real pad level. Output-only mode reads 0 and showed
+`relay=OFF` while running (bug found and fixed on hardware).
 
-## Important Code Gates
+## Firmware Behavior (`src/main.cpp`)
 
-In `src/main.cpp`, these constants intentionally block powered relay operation:
+- Safe boot: GPIO13/14/26 LOW, servo 0 deg, state `Idle`.
+- MCPWM group and timer clocks at 80 MHz: 150 kHz request -> 533 ticks ->
+  **150.09 kHz** actual, ~0.28 kHz steps.
+- Dead time **700 ns** = 56 ticks of the 12.5 ns group clock (from TLP250
+  0.5 us max delay + IRF840 ~69 ns turn-off). Not measured.
+- Start order: MCPWM is configured and running with dead time active while the
+  pins are plain GPIO LOW; the pins are routed to MCPWM last.
+- Stop/fault order: the pins are detached and forced LOW first, then the MCPWM
+  timer stops.
+- Run sequence (IR on): PWM on with GPIO13 OFF -> 20 ms -> GPIO13 ON -> 50 ms ->
+  `Running`. `stop`: GPIO13 OFF -> 80 ms -> PWM OFF -> `Idle`.
+- `FaultLocked` is sticky: any MCPWM API error turns GPIO13 and the gates OFF
+  immediately. Only a reset clears it.
+- Serial 115200 commands:
+
+  | Command | Behavior |
+  |---|---|
+  | `stop` | Turns everything off in order. Always allowed. |
+  | `freq <hz>` | 100000..200000, Idle only, applies on next start. |
+  | `status` | State, fault, relay, switching, frequency, dead time, IR, servo. |
+
+- IR + servo control (user request; replaced the earlier boot auto-run):
+  - IR on (GPIO27 LOW): servo to 45 deg, then run. Wireless charging ON.
+  - IR off (HIGH): servo to 0 deg, then `stop`.
+  - 100 ms debounce. It acts 2 s after boot and on every change, so an object
+    already present at boot starts charging by itself. A serial `stop` holds
+    until the IR state changes. Flip polarity with `kIrActiveLow`.
+- LCD (simple, user asked to keep it simple): every 500 ms, line 1
+  `RUNNING    R:ON`, line 2 `150.09kHz SW:ON`, or `FAULT - RESET` + the
+  reason. `lcd.init()` blocks ~1.1 s at boot; each refresh blocks the loop
+  ~40 ms. No I2C error detection. `[USER]` The display works (showed the OFF
+  state).
+- `src/opto13_test.cpp` (env `opto13_test`): drives only GPIO13 via serial
+  `on`/`off`, with no timeout (user request). GPIO14/26 are held LOW.
+
+## Arm Flags
 
 ```cpp
-constexpr bool kPowerStageTopologyVerified = false;
-constexpr bool kAllowRelayEnergizedRun = false;
+constexpr bool kPowerStageTopologyVerified = true;   // armed
+constexpr bool kAllowRelayEnergizedRun = true;       // armed
+constexpr bool kGateCommandActiveHigh = true;        // static_assert blocks false
 ```
 
-`[RE-LOCKED 2026-10-11]` Both were briefly `true` (user request), and `run`
-was executed with 12 V applied. The user reported that something got warm.
-The topology was then corrected to a half bridge, so both are `false` again
-and the board is flashed with `run` refused. Do not re-arm until the coil
-wiring is known, the high-side TLP250 floating supply is confirmed, and the
-MOSFETs are checked for damage.
+Arm history (all 2026-10-11, all at the user's explicit request, no scope):
+1. Armed for an assumed full bridge; `run` at 12 V. Parts got warm.
+2. The user then said it is a **half bridge**, so I re-locked it. The user's
+   hand drawing showed two gates wired to the coil and no series capacitor.
+3. The user reported rewiring as the reference half bridge (below), so I armed
+   it again. On `run`, the supply-module IRF840 got hot and the run was stopped.
 
-`[ARMED 2026-10-11, second time]` The user reports rewiring as the reference
-half bridge: Q1 drain to +12 V, Q1 source = switch node = Q2 drain, Q2 source
-to GND, coil + series capacitor from the switch node to GND, and each gate on
-its own TLP250 (GPIO14 high side, GPIO26 low side). Flags are `true` again.
-Not verified: scope waveforms, high-side TLP250 bootstrap/floating supply,
-MOSFET damage from the earlier warm run, capacitor value/rating.
+`kGateCommandActiveHigh` must stay true. TLP250 is non-inverting, and the
+safe state forces the pins LOW, so inverted drive would turn every MOSFET ON.
 
-`[CONFIRMED by user 2026-10-11]` The "relay" on GPIO13/Opto 1 is a MOSFET
-switch, NOT an electromechanical relay. During the second armed run it got
-hot within seconds and the run was stopped. Likely causes:
-(a) An N-channel MOSFET on the +12 V side without a gate voltage above 12 V
-    acts as a source follower: it drops ~4-5 V at load, so 1 A means ~5 W.
-(b) IRF840 RDS(on) 0.85 ohm (~1.5 ohm hot): 2 A means 3.4 W, and a TO-220
-    without a heatsink (62 C/W) rises ~200 C.
-(c) High bridge current at resonance.
-Needed: MOSFET part, high or low side, gate driver/voltage, supply current
-during the run. The relay timing constants (20/50/80 ms) are harmless with a
-MOSFET.
+## Hardware Facts
 
-Also verify this before changing it:
+- `[USER]` Half bridge: Q1 (high) drain to +12 V, Q1 source = switch node =
+  Q2 drain, Q2 source to GND. Coil + series capacitor from the switch node to
+  GND. Each gate on its own TLP250. Value and rating of the series capacitor
+  are unknown.
+- `[USER]` MOSFETs: IRF840 (500 V, 8 A, RDS(on) 0.85 ohm max at 25 C, ~1.5 ohm
+  hot, Qg 63 nC). Poor fit for 12 V; IRFZ44N (17.5 mohm) is the suggested
+  replacement.
+- `[USER]` Coils: TX and RX identical, 1.0 mm wire, 20 turns, 10 cm diameter.
+  `[ASSUMPTION]` L ~79 uH, R ~0.2 ohm at 150 kHz. Measure L with an LCR meter.
+- `[BLOCKER]` High-side TLP250 supply (floating 15 V or bootstrap) never
+  confirmed.
 
-```cpp
-constexpr bool kGateCommandActiveHigh = true;
-```
+## Supply Module (GPIO13 "relay")
 
-TLP250 is non-inverting (LED ON -> output HIGH), so `true` is correct only if
-each GPIO sources current into the TLP250 LED anode. A `static_assert` now
-blocks `false`, because the forced-LOW safe state would then turn every MOSFET
-ON. Inverted drive needs a redesigned safe state, not a flag flip.
+`[USER]` It is not a relay. It is a perfboard "power supply module": input
+terminal -> cement power resistor -> large electrolytic -> 1 mH/10 A E25 choke
+-> **IRF840 (source to GND, gate driven at 12 V via opto 1, no heatsink)** ->
+diode -> small electrolytic -> second 1 mH/10 A choke -> output terminal.
 
-## Hardware Facts From User (2026-10-11)
+- That layout is a **boost converter**. If the drain sits at the choke/diode
+  junction, holding GPIO13 ON shorts 12 V through the resistor, choke, and
+  IRF840; the diode then blocks and the output gets almost nothing.
+- If it is instead a plain low-side switch, the heat is I^2 x 0.85-1.5 ohm
+  (1.5 A -> 2-3.4 W -> +125-210 C on a bare TO-220 at 62 C/W).
+- `[TODO]` Pending test (`opto13_test`): half bridge disconnected, 12 V with a
+  1 A limit, `on` -> read supply current and module output voltage. High
+  current with ~0 V out means boost short; ~0 A with 12 V out means a switch.
+- Resistor value and capacitor values are unread.
 
-- `[CONFIRMED by user]` Gate drive: TLP250 optocoupler gate drivers.
-- `[CONFIRMED by user]` MOSFETs: IRF840 (500 V, 8 A, RDS(on) 0.85 ohm max,
-  Qg 63 nC max).
-- `[CORRECTED by user 2026-10-11]` Topology is a HALF bridge, NOT a full
-  bridge. GPIO14 (TLP250 2+3) drives the HIGH side, GPIO26 (TLP250 4+5)
-  drives the LOW side. The complementary + dead-time MCPWM waveform suits
-  this mapping.
-- `[UNKNOWN]` Coil connection: the user answered "no midpoint" and "other".
-  A schematic is needed. If one coil end goes from the switch node straight to
-  GND or +12 V with no series capacitor, the coil carries ~5-6 A DC
-  (~6 V across ~1 ohm).
-- `[CONFIRMED by user]` DC bus: 12 V.
-- `[CONFIRMED by user]` Transmitter coil: 1.0 mm wire, 20 turns, 10 cm
-  diameter. Receiver coil is identical.
-- `[CONFIRMED by user]` No resonant capacitor is fitted yet.
-- `[ASSUMPTION]` Coil L ~79 uH (multi-turn loop estimate, ~84 uH by Wheeler).
-  R ~0.2 ohm at 150 kHz. Measure L with an LCR meter.
+## Power Stage Analysis (half bridge, calculated, not measured)
 
-## Power Stage Analysis (calculated, not measured)
+- Half-bridge fundamental = 0.45 x 12 V = 5.4 V rms. One IRF840 conducts at a
+  time, so loop R ~ 0.2 + 0.85 = ~1.05 ohm.
+- Series capacitor for 150 kHz with L 79 uH: C = 14.2 nF (10 nF + 4.7 nF =
+  14.7 nF -> 147.7 kHz). Polypropylene film, >= 630 V DC. In a half bridge it
+  also blocks the 6 V DC midpoint.
+- Without the capacitor: ~0.07 A, almost no transfer.
+- **Hazard:** at resonance with no receiver, ~5.1 A rms and ~380 V rms across
+  the capacitor. The current rises as the receiver moves away. Start at 2-3 V,
+  current-limited.
+- At a 5 cm gap (k ~0.125): ~1.5 W at 90% (5 ohm load), ~2.7 W at 87%
+  (10 ohm load).
+- Run slightly **above** resonance: IRF840 body-diode recovery is slow, and
+  running below resonance causes destructive hard switching.
 
-- No capacitor: the bare coil is 74 ohm reactive at 150 kHz, so primary current
-  is ~0.15 A rms and receiver open-circuit voltage is ~1.35 V rms at a 5 cm
-  gap. Almost no power transfers. Series compensation is needed on both coils.
-- Series-series (SS) compensation: C = 1 / ((2*pi*150 kHz)^2 * 79 uH) =
-  14.2 nF on each side. Example: 10 nF + 4.7 nF = 14.7 nF -> 147.7 kHz.
-  Use polypropylene film (MKP/CBB), rated >= 630 V DC.
-- SS hazard: primary current rises as the receiver moves away. With no
-  receiver at resonance, current is limited only by ~1.9 ohm (coil + 2x IRF840):
-  12 V bus -> ~5.7 A rms and ~420 V rms across the transmitter capacitor.
-- At a 5 cm gap (k ~0.125) with a 10 ohm AC load: ~9 W at ~80% efficiency
-  with IRF840, versus ~12.7 W at ~95% with ~20 mohm MOSFETs. At a 10 cm gap,
-  IRF840 efficiency drops to ~15-57%.
-- IRF840 body diode recovery is slow (hundreds of ns). Operate slightly above
-  resonance so the bridge sees an inductive load and soft switching (ZVS).
-  Never run below resonance.
-- IRF840 RDS(on) 0.85 ohm is a poor fit for a 12 V bus. Recommend a low-voltage
-  MOSFET (<= 20 mohm, Qg <= ~60 nC) once the waveform tests pass.
+## MCPWM Driver Facts (ESP-IDF v4.4.7 source)
 
-## Decisions Already Made
+- `[CONFIRMED]` Legacy driver defaults to group 10 MHz / timer 1 MHz, and
+  `peak = timer_clk / f` uses integer division (the original firmware made
+  166.7 kHz).
+- `[CONFIRMED]` `mcpwm_init()` starts the timer. The dead-time block resets to
+  bypass, so A and B are identical until `mcpwm_deadtime_enable()`. The
+  original firmware turned all switches ON for microseconds at every start.
+  Fixed by routing the pins last.
+- `[CONFIRMED]` Dead-time ticks use the group clock (`dt_clk_sel = 0`).
+- `[ASSUMPTION]` The real delay is probably `ticks + 1` (712.5 ns).
+- `[CONFIRMED]` Changing frequency on a running timer updates the period
+  immediately and can stretch a cycle; that is why `freq` is Idle-only.
 
-- Use ESP32 MCPWM hardware for 150 kHz switching.
-- Do not use software loops or `digitalWrite()` for high-frequency waveform
-  generation.
-- Keep powered bridge operation disabled by default.
-- Originally: serial commands instead of automatic startup. Changed at user
-  request 2026-10-11 to auto-run at boot (`kAutoRunAtBoot`).
-- Keep the relay separate from high-frequency switching.
-- Treat the hardware topology as unverified until a schematic and measurements
-  prove otherwise.
+## Open Risks
 
-## Open Hardware Risks
-
-- `[BLOCKER]` Full-bridge diagonal mapping is stated by the user but not yet
-  shown by schematic or scope.
-- `[BLOCKER]` TLP250 propagation delay (0.5 us max) and part-to-part skew are
-  not measured. The 700 ns dead time is a datasheet-derived starting point.
-- `[BLOCKER]` TLP250 LED wiring (GPIO sources anode?) is not confirmed. One
-  GPIO drives two TLP250 LEDs: ~7-10 mA each, ~20 mA total. That is at the
-  ESP32 default drive limit, so use a buffer (74HCT244 or a transistor).
-- `[BLOCKER]` High-side TLP250 floating supplies (2 floating + 1 low-side, or
-  bootstrap) are not confirmed.
-- `[BLOCKER]` GPIO13/GPIO14 are JTAG pins (MTCK/MTMS). Their level during
-  reset/boot (before `setup()`) is not firmware-controlled. External pull-downs
-  on all three opto inputs are needed, and power-up must be checked on a scope.
-- `[BLOCKER]` Gate-to-source voltage for each MOSFET is not confirmed.
-- `[BLOCKER]` Dedicated gate-driver circuitry is not confirmed.
-- `[BLOCKER]` Fast overcurrent protection is not confirmed.
-- `[BLOCKER]` Relay DC contact rating and inrush behavior are not confirmed.
-- `[BLOCKER]` No resonant capacitors fitted. Do not fit them at full 12 V
-  until overcurrent protection exists (see SS hazard above).
-- `[TODO]` No hardware watchdog yet. If firmware hangs while running, MCPWM
-  keeps switching.
-- `[TODO]` MCPWM hardware fault input (`mcpwm_fault_init` + one-shot trip)
-  is not used yet. It is the intended fast overcurrent path.
+- `[BLOCKER]` Supply-module IRF840 overheats whenever GPIO13 is ON.
+- `[BLOCKER]` No scope data: dead time, gate-to-source voltages, and that the
+  high and low sides are never ON together.
+- `[BLOCKER]` High-side TLP250 floating supply / bootstrap unconfirmed.
+- `[BLOCKER]` No overcurrent protection, fuse, or MCPWM fault input.
+- `[TODO]` One GPIO drives two TLP250 LEDs (~20 mA total, at the drive limit);
+  use a buffer.
+- `[TODO]` GPIO13/14 are JTAG pins and are uncontrolled during boot. Fit
+  external pull-downs on all opto inputs.
+- `[TODO]` IR module on 3.3 V; servo on its own 5 V with shared GND (SG90 stall
+  current ~650 mA can reset the ESP32 on USB).
+- `[TODO]` LCD backpack pull-ups to 5 V exceed ESP32 pin ratings; use a level
+  shifter or 3.3 V pull-ups.
+- `[TODO]` No watchdog. If the firmware hangs while running, MCPWM keeps
+  switching.
 
 ## Next Recommended Tasks
 
-1. Flash the new firmware. Run relay-off `pwm` and confirm a 6.66 us period
-   (150.09 kHz) at GPIO14/GPIO26 and non-overlap of ~0.7 us.
-2. Scope power-up and reset: GPIO13/14/26 and TLP250 outputs must stay LOW.
-3. Scope TLP250 outputs and every MOSFET gate-to-source. Measure delay and
-   skew, then set `kDeadTimeNs` from the measurements.
-4. Measure coil L with an LCR meter. Choose SS capacitors for ~145-150 kHz.
-5. Add overcurrent sensing into the MCPWM fault input (one-shot trip) and a
-   bus fuse before fitting the capacitors.
-6. Commission at 2-3 V bus, current-limited, with the receiver present. Tune
-   `freq` to just above resonance.
-7. Consider replacing IRF840 with a low-voltage MOSFET for the 12 V bus.
-8. Only after hardware proof, decide whether to arm `run`.
+1. Run the `opto13_test` supply-module test and decide: replace the module
+   (P-ch IRF4905 high-side switch, or feed the bridge straight from the bench
+   supply) or fix it (IRFZ44N + heatsink).
+2. Scope with IR on (supply disconnected; GPIO13 also turns ON): 6.66 us period, ~0.7 us both-LOW gaps,
+   gate-to-source on both MOSFETs.
+3. Measure coil L, fit the series capacitor, and commission at 2-3 V
+   current-limited with the receiver present; tune `freq` just above resonance.
+4. Replace the IRF840s with low-RDS(on) MOSFETs for the 12 V bus.
 
 ## Verification Checklist For Future Changes
 
-For documentation-only changes:
-
-- Check that docs agree with `src/main.cpp`.
-- No build required unless code or config changed.
-
-For firmware changes:
-
-- Build with `/home/irfan/.platformio/penv/bin/platformio run`.
-- Confirm safe boot behavior remains relay OFF and switching inactive.
-- Confirm `run` remains locked out unless intentionally armed.
-- If waveform behavior changes, update oscilloscope procedure and record the
-  expected waveform.
-
-For hardware-enabling changes:
-
-- Require schematic evidence.
-- Require oscilloscope evidence at MOSFET gate-to-source, not just ESP32 pins.
-- Require a low-energy commissioning plan.
-- Document remaining unverified risks in this file and in
-  `docs/wpt-controller-design.md`.
+- Firmware: build `esp32dev` (and `opto13_test` if touched) with zero
+  warnings. Confirm safe boot (GPIO13 OFF, PWM OFF) in the serial log.
+- Hardware-enabling changes: require schematic or scope evidence, or an
+  explicit user request recorded here.
+- Keep this file, `wpt-controller-design.md`, and `AGENTS.md` consistent with
+  `src/main.cpp`.
